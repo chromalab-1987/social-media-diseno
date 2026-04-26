@@ -7,7 +7,7 @@ export default async function handler(req, res) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
+      Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
     },
     body: JSON.stringify({
       model: "llama-3.1-8b-instant",
@@ -21,6 +21,5 @@ export default async function handler(req, res) {
     return res.status(response.status).json({ error: data.error?.message || "Error de API" });
   }
 
-  const text = data.choices?.[0]?.message?.content || "";
-  res.status(200).json({ text });
+  res.status(200).json({ text: data.choices?.[0]?.message?.content || "" });
 }
