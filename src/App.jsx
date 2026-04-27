@@ -1072,621 +1072,788 @@ const REEL_PLATFORMS = [
 ];
 const REEL_DURATIONS = [15, 30, 45, 60];
 const REEL_FONTS = [
-  { label: "Georgia",    value: "Georgia, serif" },
   { label: "Montserrat", value: "Montserrat, sans-serif" },
+  { label: "Georgia",    value: "Georgia, serif" },
   { label: "Arial",      value: "Arial, sans-serif" },
   { label: "Impact",     value: "Impact, fantasy" },
   { label: "Courier",    value: "'Courier New', monospace" },
 ];
-const REEL_TRANSITIONS = ["fade", "slide", "zoom"];
 
-const makeScene = (label = "ESCENA", text = "", dur = 6) => ({
-  id: `sc${Date.now()}${Math.random().toString(36).slice(2,5)}`,
-  label, text, dur,
+/* BASE_W: all sizes authored at this width, scaled at draw time */
+const REEL_BASE_W = 1080;
+
+const makeTBReel = (text = "", xF = 0.07, yF = 0.35) => ({
+  id: `rtb${Date.now()}${Math.random().toString(36).slice(2,5)}`,
+  text, xF, yF, wF: 0.86,
   fontFamily: "Montserrat, sans-serif",
-  fontSize: 36,
+  fontSize: 52,   /* at REEL_BASE_W */
   align: "center",
   color: "#FFFFFF",
-  bold: true,
-  italic: false,
-  bgType: "gradient",      // "solid" | "gradient" | "image"
-  bgColor: "#0C0C0F",
-  bgColor2: "#7B35D4",
-  bgAngle: 135,
-  bgImage: null,
-  bgFit: "cover",
-  transition: "fade",
-  showLabel: true,
-  labelColor: "#9F5FF0",
+  bold: true, italic: false, underline: false,
+});
+
+const makeScene = (label = "ESCENA", text = "") => ({
+  id: `sc${Date.now()}${Math.random().toString(36).slice(2,5)}`,
+  label,
+  dur: 6,
+  bgType: "gradient",
+  bgColor: "#0C0C0F", bgColor2: "#7B35D4", bgAngle: 135,
+  bgImage: null, bgFit: "cover",
+  showLabel: true, labelColor: "#9F5FF0",
+  logo: null,   /* { src, xF, yF, wF, ar } */
+  textBoxes: [makeTBReel(text)],
 });
 
 function parseReelScript(raw) {
   const rx = /(GANCHO|ESCENA\s*\d+|CTA):\s*([^\n]+(?:\n(?!GANCHO:|ESCENA|CTA:)[^\n]+)*)/gi;
-  const out = [];
-  let m;
-  while ((m = rx.exec(raw)) !== null) {
-    out.push({ label: m[1].trim().toUpperCase(), text: m[2].replace(/\n/g, " ").trim() });
-  }
+  const out = []; let m;
+  while ((m = rx.exec(raw)) !== null)
+    out.push({ label: m[1].trim().toUpperCase(), text: m[2].replace(/\n/g," ").trim() });
   return out.length ? out : [{ label: "CONTENIDO", text: raw.trim() }];
 }
 
-function reelWrapText(ctx, text, cx, cy, maxW, lineH) {
-  const words = text.split(" ");
-  let line = "";
-  const lines = [];
-  for (const w of words) {
-    const t = line ? line + " " + w : w;
-    if (ctx.measureText(t).width > maxW && line) { lines.push(line); line = w; }
-    else line = t;
+/* ── Shared canvas draw ── all sizes authored at REEL_BASE_W, scaled by W */
+function drawReelFrame(ctx, W, H, scene, t, alpha, bgImgCache) {
+  const sc = W / REEL_BASE_W;   /* scale factor */
+
+  /* Background */
+  if (scene.bgType === "image" && bgImgCache[scene.bgImage]) {
+    const img = bgImgCache[scene.bgImage];
+    if (scene.bgFit === "cover") {
+      const s = Math.max(W/img.width, H/img.height);
+      ctx.drawImage(img, (W-img.width*s)/2, (H-img.height*s)/2, img.width*s, img.height*s);
+    } else ctx.drawImage(img, 0, 0, W, H);
+    ctx.fillStyle = "rgba(0,0,0,0.42)"; ctx.fillRect(0, 0, W, H);
+  } else if (scene.bgType === "gradient") {
+    const ang = (scene.bgAngle||135) * Math.PI/180;
+    const grad = ctx.createLinearGradient(
+      W/2-Math.cos(ang)*W, H/2-Math.sin(ang)*H,
+      W/2+Math.cos(ang)*W, H/2+Math.sin(ang)*H
+    );
+    grad.addColorStop(0, scene.bgColor); grad.addColorStop(1, scene.bgColor2);
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+  } else {
+    ctx.fillStyle = scene.bgColor; ctx.fillRect(0, 0, W, H);
   }
-  if (line) lines.push(line);
-  const totalH = lines.length * lineH;
-  const startY = cy - totalH / 2 + lineH / 2;
-  lines.forEach((l, i) => ctx.fillText(l, cx, startY + i * lineH));
-  return lines.length;
+
+  /* Animated orb */
+  const ox = W*0.5 + Math.sin(t*0.4)*W*0.15, oy = H*0.45 + Math.cos(t*0.28)*H*0.08;
+  const orb = ctx.createRadialGradient(ox,oy,0,ox,oy,W*0.6);
+  orb.addColorStop(0,"rgba(123,53,212,.16)"); orb.addColorStop(0.5,"rgba(42,157,143,.05)"); orb.addColorStop(1,"rgba(0,0,0,0)");
+  ctx.fillStyle = orb; ctx.fillRect(0, 0, W, H);
+
+  const slideY = alpha < 1 ? (1-alpha)*H*0.04 : 0;
+  ctx.save(); ctx.globalAlpha = alpha;
+
+  /* Label pill */
+  if (scene.showLabel) {
+    ctx.font = `bold ${Math.round(18*sc)}px monospace`;
+    ctx.textBaseline = "middle"; ctx.textAlign = "center";
+    const lW = ctx.measureText(scene.label).width + 30*sc;
+    const lH = 34*sc, lY = H*0.22, lX = W/2 - lW/2;
+    ctx.fillStyle = `${scene.labelColor}22`;
+    ctx.strokeStyle = `${scene.labelColor}88`; ctx.lineWidth = 1;
+    if (ctx.roundRect) ctx.roundRect(lX,lY,lW,lH,lH/2);
+    else ctx.rect(lX,lY,lW,lH);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = scene.labelColor;
+    ctx.fillText(scene.label, W/2, lY+lH/2);
+    ctx.globalAlpha = alpha*0.25; ctx.strokeStyle = scene.labelColor; ctx.lineWidth = 0.6;
+    ctx.beginPath(); ctx.moveTo(W*0.25,lY+lH+8*sc); ctx.lineTo(W*0.75,lY+lH+8*sc); ctx.stroke();
+    ctx.globalAlpha = alpha;
+  }
+
+  /* Text boxes */
+  for (const tb of scene.textBoxes) {
+    if (!tb.text.trim()) continue;
+    const fStr = `${tb.italic?"italic ":""}${tb.bold?"bold ":""}${Math.round(tb.fontSize*sc)}px ${tb.fontFamily}`;
+    ctx.font = fStr; ctx.fillStyle = tb.color;
+    ctx.textAlign = tb.align; ctx.textBaseline = "top";
+    ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 14*sc;
+    const tx = tb.xF*W, ty = tb.yF*H + slideY, tW = tb.wF*W;
+    const refX = tb.align==="center" ? tx+tW/2 : tb.align==="right" ? tx+tW : tx;
+    const lH2 = tb.fontSize*1.55*sc;
+    /* word wrap */
+    const words = tb.text.split(" "); let line=""; const lines=[];
+    for (const w of words) {
+      const test = line?line+" "+w:w;
+      if (ctx.measureText(test).width > tW && line) { lines.push(line); line=w; } else line=test;
+    }
+    if (line) lines.push(line);
+    lines.forEach((l,i) => {
+      const ly = ty + i*lH2;
+      ctx.fillText(l, refX, ly);
+      if (tb.underline) {
+        const tw2 = ctx.measureText(l).width;
+        const ux = tb.align==="center"?refX-tw2/2:tb.align==="right"?refX-tw2:refX;
+        ctx.shadowBlur=0; ctx.fillRect(ux, ly+Math.round(tb.fontSize*sc)+2, tw2, Math.max(1, Math.round(tb.fontSize*sc*0.06)));
+      }
+    });
+    ctx.shadowBlur = 0;
+  }
+
+  /* Logo */
+  if (scene.logo && bgImgCache[scene.logo.src]) {
+    const lImg = bgImgCache[scene.logo.src];
+    const lw = scene.logo.wF*W, lh = lw*scene.logo.ar;
+    ctx.drawImage(lImg, scene.logo.xF*W, scene.logo.yF*H, lw, lh);
+  }
+
+  ctx.restore();
 }
 
-function ReelEditor({ post, onClose, brandForm, onSaveReel }) {
-  const [step, setStep]           = useState(1); // 1=config, 2=scenes, 3=render
-  const [platform, setPlatform]   = useState("instagram");
-  const [duration, setDuration]   = useState(30);
-  const [scenes,   setScenes]     = useState([]);
-  const [selScene, setSelScene]   = useState(0);
-  const [genLoading, setGenLoading] = useState(false);
-  const [genError,   setGenError]   = useState("");
-  const [rendering,  setRendering]  = useState(false);
-  const [progress,   setProgress]   = useState(0);
-  const [videoBlob,  setVideoBlob]  = useState(null);
-  const [saving,     setSaving]     = useState(false);
+/* wrap text for canvas returning lines */
+function reelCanvasWrap(ctx, text, maxW) {
+  const words = text.split(" "); let line=""; const lines=[];
+  for (const w of words) {
+    const t = line?line+" "+w:w;
+    if (ctx.measureText(t).width > maxW && line) { lines.push(line); line=w; } else line=t;
+  }
+  if (line) lines.push(line); return lines;
+}
 
-  const canvasRef  = useRef(null);
-  const rafRef     = useRef(null);
-  const bgImgCache = useRef({});    // url -> HTMLImageElement
-  const bgFileRefs = useRef({});
+function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
+  const [step,      setStep]      = useState(1);
+  const [platform,  setPlatform]  = useState("instagram");
+  const [duration,  setDuration]  = useState(30);
+  const [scenes,    setScenes]    = useState([]);
+  const [selScene,  setSelScene]  = useState(0);
+  const [selBoxId,  setSelBoxId]  = useState(null);   /* "__logo__" | tb.id | null */
+  const [genLoading,setGenLoading]= useState(false);
+  const [genError,  setGenError]  = useState("");
+  const [rendering, setRendering] = useState(false);
+  const [progress,  setProgress]  = useState(0);
+  const [videoB64,  setVideoB64]  = useState(null);   /* base64 data URL for saving */
+  const [videoBlob, setVideoBlob] = useState(null);
+  const [saving,    setSaving]    = useState(false);
+  const [dragging,  setDragging]  = useState("");      /* "move-{id}" | "resize-{id}" | "logo-move" | "logo-resize" */
 
-  const plt = REEL_PLATFORMS.find(p => p.id === platform) || REEL_PLATFORMS[0];
+  const previewCanvasRef = useRef(null);
+  const renderCanvasRef  = useRef(null);
+  const animRaf          = useRef(null);
+  const recRaf           = useRef(null);
+  const dragRef          = useRef(null);
+  const bgImgCache       = useRef({});
+  const bgFileRefs       = useRef({});
+  const logoFileRef      = useRef(null);
+  const sceneRef         = useRef(null); /* live ref for anim loop */
+  const animT            = useRef(0);
 
-  /* ── Scene mutators ── */
-  const updScene = (id, changes) =>
-    setScenes(prev => prev.map(s => s.id === id ? { ...s, ...changes } : s));
-  const sel = scenes[selScene] || null;
+  const plt   = REEL_PLATFORMS.find(p => p.id === platform) || REEL_PLATFORMS[0];
+  const slide = scenes[selScene] || null;
+  const sel   = slide;
 
-  /* ── Step 1 → 2: generate script ── */
-  const handleGenerate = async () => {
-    setGenError(""); setGenLoading(true);
-    const sceneCount = duration <= 15 ? 2 : duration <= 30 ? 3 : duration <= 45 ? 4 : 5;
-    const prompt = `Generá un guión para un video corto (${duration} segundos) de ${plt.label}.
+  /* preview dimensions */
+  const PREV_H = 420;
+  const PREV_W = Math.round(PREV_H * plt.w / plt.h);
 
-NEGOCIO: ${brandForm.negocio}${brandForm.industria ? ` — ${brandForm.industria}` : ""}
-AUDIENCIA: ${brandForm.audiencia || "general"}
-TONO: ${brandForm.tono}
-PILAR: ${post.pilar}
-COPY DEL POST: ${post.copy}
+  /* scale factor for preview */
+  const previewSc = PREV_W / REEL_BASE_W;
 
-Generá exactamente ${sceneCount + 2} secciones con ESTE FORMATO EXACTO (sin texto extra, sin comillas, sin markdown):
+  /* ── scene mutators ── */
+  const csRef = useRef(0);
+  useEffect(() => { csRef.current = selScene; }, [selScene]);
 
-GANCHO: [frase de impacto máximo 10 palabras]
-${Array.from({length: sceneCount}, (_, i) => `ESCENA ${i+1}: [punto de valor en máximo 12 palabras]`).join('\n')}
-CTA: [llamada a acción directa máximo 8 palabras]
+  const updScene  = (id, ch) => setScenes(p => p.map(s => s.id===id ? {...s,...ch} : s));
+  const updTB     = (scId, tbId, ch) => setScenes(p => p.map(s => s.id!==scId ? s : {
+    ...s, textBoxes: s.textBoxes.map(tb => tb.id===tbId ? {...tb,...ch} : tb)
+  }));
+  const updLogo   = (scId, ch) => setScenes(p => p.map(s => s.id!==scId ? s : {
+    ...s, logo: s.logo ? {...s.logo,...ch} : null
+  }));
 
-Respondé SOLO con las secciones, nada más.`;
-    try {
-      const raw = await callClaude([{ role: "user", content: prompt }], 400);
-      const parsed = parseReelScript(raw);
-      const durPerScene = Math.floor(duration / parsed.length);
-      const newScenes = parsed.map((p, i) => ({
-        ...makeScene(p.label, p.text, i === parsed.length - 1
-          ? duration - durPerScene * (parsed.length - 1)
-          : durPerScene),
-        // Vary gradients per scene
-        bgColor:  ["#0C0C0F","#0A0A2E","#1A0A2E","#0A1A0A","#1A0A0A"][i % 5],
-        bgColor2: ["#7B35D4","#2A9D8F","#9F5FF0","#2A9D8F","#E63946"][i % 5],
-      }));
-      setScenes(newScenes);
-      setSelScene(0);
-      setStep(2);
-    } catch (e) {
-      setGenError(`Error generando guión: ${e.message}`);
-    } finally {
-      setGenLoading(false);
-    }
+  const selTB  = sel?.textBoxes?.find(tb => tb.id === selBoxId) || null;
+  const selIsLogo = selBoxId === "__logo__";
+
+  /* ── image cache ── */
+  const cacheImg = (src) => {
+    if (!src || bgImgCache.current[src]) return;
+    const img = new Image();
+    img.onload = () => { bgImgCache.current[src] = img; };
+    img.src = src;
   };
-
-  /* ── Preload background images ── */
   useEffect(() => {
     scenes.forEach(s => {
-      if (s.bgImage && !bgImgCache.current[s.bgImage]) {
-        const img = new Image();
-        img.onload = () => { bgImgCache.current[s.bgImage] = img; };
-        img.src = s.bgImage;
-      }
+      if (s.bgImage) cacheImg(s.bgImage);
+      if (s.logo?.src) cacheImg(s.logo.src);
     });
   }, [scenes]);
 
-  /* ── Live preview canvas (step 2) ── */
-  const previewCanvasRef = useRef(null);
-  const previewRaf = useRef(null);
-  const previewT   = useRef(0);
-
-  const drawPreviewFrame = (t, sceneObj) => {
-    const canvas = previewCanvasRef.current; if (!canvas || !sceneObj) return;
-    const ctx = canvas.getContext("2d");
-    const W = canvas.width, H = canvas.height;
-    drawReelFrame(ctx, W, H, sceneObj, t, 1, 0, 1, true);
-  };
-
+  /* ── live preview animation ── */
   useEffect(() => {
-    if (step !== 2) return;
-    let t = 0;
-    const animate = () => {
-      t += 1/30;
-      if (t > (sel?.dur || 5)) t = 0;
-      drawPreviewFrame(t, sel);
-      previewRaf.current = requestAnimationFrame(animate);
+    if (step !== 2 || !sel) return;
+    sceneRef.current = sel;
+    const loop = () => {
+      animT.current += 1/30;
+      if (animT.current > (sceneRef.current?.dur || 5)) animT.current = 0;
+      const canvas = previewCanvasRef.current; if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      drawReelFrame(ctx, PREV_W, Math.round(PREV_H * plt.h/plt.w), sceneRef.current, animT.current, 1, bgImgCache.current);
+      /* draw selection outlines */
+      if (sceneRef.current) {
+        const sc = sceneRef.current;
+        const pH = Math.round(PREV_H * plt.h/plt.w);
+        sc.textBoxes.forEach(tb => {
+          if (tb.id !== selBoxId && selBoxId !== "__logo__") return;
+          if (tb.id !== selBoxId) return;
+          const fSz = Math.round(tb.fontSize * previewSc);
+          const lines = Math.max(1, Math.ceil(tb.text.length / Math.max(1,
+            Math.floor((tb.wF*PREV_W) / (fSz*0.55)))));
+          const bw = tb.wF*PREV_W, bh = lines*tb.fontSize*1.55*previewSc+4;
+          ctx.save(); ctx.strokeStyle = "#9F5FF0"; ctx.lineWidth=1;
+          ctx.setLineDash([3,3]);
+          ctx.strokeRect(tb.xF*PREV_W-1, tb.yF*pH-1, bw+2, bh+2);
+          /* resize handle */
+          ctx.fillStyle="#7B35D4"; ctx.setLineDash([]);
+          ctx.fillRect(tb.xF*PREV_W+bw-5, tb.yF*pH+bh/2-10, 10, 20);
+          ctx.restore();
+        });
+        if (selBoxId==="__logo__" && sc.logo && bgImgCache.current[sc.logo.src]) {
+          const lw=sc.logo.wF*PREV_W, lh=lw*sc.logo.ar;
+          ctx.save(); ctx.strokeStyle="#2A9D8F"; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+          ctx.strokeRect(sc.logo.xF*PREV_W-1, sc.logo.yF*pH-1, lw+2, lh+2);
+          ctx.fillStyle="#2A9D8F"; ctx.setLineDash([]);
+          ctx.fillRect(sc.logo.xF*PREV_W+lw-5, sc.logo.yF*pH+lh-5, 10, 10);
+          ctx.restore();
+        }
+      }
+      animRaf.current = requestAnimationFrame(loop);
     };
-    animate();
-    return () => cancelAnimationFrame(previewRaf.current);
-  }, [step, sel, scenes]);
+    loop();
+    return () => cancelAnimationFrame(animRaf.current);
+  }, [step, selScene, selBoxId, scenes, plt]);
 
-  /* ── Shared frame draw function ── */
-  const drawReelFrame = (ctx, W, H, scene, t, totalDur, frameInScene, alphaIn, isPreview) => {
-    // Background
-    if (scene.bgType === "image" && bgImgCache.current[scene.bgImage]) {
-      const img = bgImgCache.current[scene.bgImage];
-      if (scene.bgFit === "cover") {
-        const s = Math.max(W / img.width, H / img.height);
-        const sw = img.width * s, sh = img.height * s;
-        ctx.drawImage(img, (W - sw) / 2, (H - sh) / 2, sw, sh);
-      } else { ctx.drawImage(img, 0, 0, W, H); }
-      // Dark overlay for readability
-      ctx.fillStyle = "rgba(0,0,0,0.42)"; ctx.fillRect(0, 0, W, H);
-    } else if (scene.bgType === "gradient") {
-      const ang = (scene.bgAngle || 135) * Math.PI / 180;
-      const x0 = W/2 - Math.cos(ang)*W, y0 = H/2 - Math.sin(ang)*H;
-      const x1 = W/2 + Math.cos(ang)*W, y1 = H/2 + Math.sin(ang)*H;
-      const grad = ctx.createLinearGradient(x0, y0, x1, y1);
-      grad.addColorStop(0, scene.bgColor); grad.addColorStop(1, scene.bgColor2);
-      ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
-    } else {
-      ctx.fillStyle = scene.bgColor; ctx.fillRect(0, 0, W, H);
+  /* update scene ref for animation loop without restarting */
+  useEffect(() => { sceneRef.current = sel; }, [sel]);
+
+  /* ── drag on preview canvas ── */
+  useEffect(() => {
+    if (!dragging) return;
+    const pH = Math.round(PREV_H * plt.h/plt.w);
+    const onMove = (e) => {
+      const r = dragRef.current; if (!r) return;
+      const dx = e.clientX - r.startX, dy = e.clientY - r.startY;
+      const i = csRef.current;
+      const sc = scenes[i]; if (!sc) return;
+      if (dragging.startsWith("move-")) {
+        const id = dragging.slice(5);
+        updTB(sc.id, id, {
+          xF: Math.max(0, Math.min(0.9,  r.xF0 + dx/PREV_W)),
+          yF: Math.max(0, Math.min(0.92, r.yF0 + dy/pH)),
+        });
+      } else if (dragging.startsWith("resize-")) {
+        const id = dragging.slice(7);
+        const tb = sc.textBoxes.find(t=>t.id===id); if (!tb) return;
+        updTB(sc.id, id, { wF: Math.max(0.08, Math.min(1-tb.xF, r.wF0+dx/PREV_W)) });
+      } else if (dragging==="logo-move" && sc.logo) {
+        updLogo(sc.id, {
+          xF: Math.max(0, Math.min(0.9,  r.xF0+dx/PREV_W)),
+          yF: Math.max(0, Math.min(0.9,  r.yF0+dy/pH)),
+        });
+      } else if (dragging==="logo-resize" && sc.logo) {
+        updLogo(sc.id, { wF: Math.max(0.04, Math.min(0.9, r.wF0+dx/PREV_W)) });
+      }
+    };
+    const onUp = () => { dragRef.current=null; setDragging(""); };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup",   onUp);
+    return () => { window.removeEventListener("mousemove",onMove); window.removeEventListener("mouseup",onUp); };
+  }, [dragging, scenes, plt]);
+
+  /* ── preview canvas mouse handlers ── */
+  const onPreviewMouseDown = (e) => {
+    if (step!==2 || !sel) return;
+    const rect = previewCanvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const pH = Math.round(PREV_H * plt.h/plt.w);
+
+    /* check logo resize handle first */
+    if (sel.logo && bgImgCache.current[sel.logo.src]) {
+      const lw=sel.logo.wF*PREV_W, lh=lw*sel.logo.ar;
+      const rx_=sel.logo.xF*PREV_W+lw-5, ry_=sel.logo.yF*pH+lh-5;
+      if (mx>=rx_&&mx<=rx_+10&&my>=ry_&&my<=ry_+10) {
+        e.preventDefault(); dragRef.current={startX:e.clientX,startY:e.clientY,wF0:sel.logo.wF};
+        setDragging("logo-resize"); setSelBoxId("__logo__"); return;
+      }
+      /* logo move */
+      if (mx>=sel.logo.xF*PREV_W&&mx<=sel.logo.xF*PREV_W+lw&&my>=sel.logo.yF*pH&&my<=sel.logo.yF*pH+lh) {
+        e.preventDefault(); dragRef.current={startX:e.clientX,startY:e.clientY,xF0:sel.logo.xF,yF0:sel.logo.yF};
+        setDragging("logo-move"); setSelBoxId("__logo__"); return;
+      }
     }
 
-    // Animated orb
-    const ox = W * 0.5 + Math.sin(t * 0.4) * W * 0.15;
-    const oy = H * 0.45 + Math.cos(t * 0.28) * H * 0.08;
-    const orb = ctx.createRadialGradient(ox, oy, 0, ox, oy, W * 0.6);
-    orb.addColorStop(0, "rgba(123,53,212,.18)");
-    orb.addColorStop(0.5, "rgba(42,157,143,.06)");
-    orb.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = orb; ctx.fillRect(0, 0, W, H);
-
-    // Fade alpha
-    const alpha = alphaIn;
-    const slideY = alpha < 1 ? (1 - alpha) * H * 0.04 : 0;
-
-    ctx.save(); ctx.globalAlpha = alpha;
-
-    // Label pill
-    if (scene.showLabel) {
-      const lFont = isPreview ? `bold ${Math.round(12 * (W/400))}px monospace` : "bold 20px monospace";
-      ctx.font = lFont; ctx.textBaseline = "middle"; ctx.textAlign = "center";
-      const lW = ctx.measureText(scene.label).width + 30;
-      const lH = isPreview ? 22 * (W/400) : 34;
-      const lX = W/2 - lW/2, lY = H * 0.29;
-      ctx.fillStyle = `${scene.labelColor}22`;
-      ctx.strokeStyle = `${scene.labelColor}88`; ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.roundRect ? ctx.roundRect(lX, lY, lW, lH, lH/2)
-        : ctx.rect(lX, lY, lW, lH);
-      ctx.fill(); ctx.stroke();
-      ctx.fillStyle = scene.labelColor;
-      ctx.fillText(scene.label, W/2, lY + lH/2);
-      // Divider
-      ctx.globalAlpha = alpha * 0.3; ctx.strokeStyle = scene.labelColor;
-      ctx.lineWidth = 0.6;
-      ctx.beginPath(); ctx.moveTo(W*0.25, lY+lH+8); ctx.lineTo(W*0.75, lY+lH+8); ctx.stroke();
-      ctx.globalAlpha = alpha;
+    /* check text box resize handles */
+    for (const tb of [...sel.textBoxes].reverse()) {
+      const fSz = Math.round(tb.fontSize*previewSc);
+      const lines = Math.max(1, Math.ceil(tb.text.length/Math.max(1,Math.floor((tb.wF*PREV_W)/(fSz*0.55)))));
+      const bw=tb.wF*PREV_W, bh=lines*tb.fontSize*1.55*previewSc+4;
+      const rx_=tb.xF*PREV_W+bw-5, ry_=tb.yF*pH+bh/2-10;
+      if (mx>=rx_&&mx<=rx_+10&&my>=ry_&&my<=ry_+bh) {
+        e.preventDefault(); dragRef.current={startX:e.clientX,wF0:tb.wF};
+        setDragging(`resize-${tb.id}`); setSelBoxId(tb.id); return;
+      }
+      /* text box move */
+      if (mx>=tb.xF*PREV_W&&mx<=tb.xF*PREV_W+bw&&my>=tb.yF*pH&&my<=tb.yF*pH+bh) {
+        e.preventDefault(); dragRef.current={startX:e.clientX,startY:e.clientY,xF0:tb.xF,yF0:tb.yF};
+        setDragging(`move-${tb.id}`); setSelBoxId(tb.id); return;
+      }
     }
-
-    // Main text
-    ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 16;
-    const mainFontStr = `${scene.italic?"italic ":""}${scene.bold?"bold ":""}${scene.fontSize}px ${scene.fontFamily}`;
-    ctx.font = mainFontStr;
-    ctx.fillStyle = scene.color;
-    ctx.textAlign = scene.align;
-    ctx.textBaseline = "middle";
-    const tx = scene.align === "center" ? W/2 : scene.align === "right" ? W*0.9 : W*0.1;
-    const maxW = W * 0.82;
-    reelWrapText(ctx, scene.text, tx, H * 0.5 + slideY, maxW, scene.fontSize * 1.5);
-    ctx.shadowBlur = 0;
-
-    ctx.restore();
+    setSelBoxId(null);
   };
 
-  /* ── Record video ── */
+  /* ── generate script ── */
+  const handleGenerate = async () => {
+    setGenError(""); setGenLoading(true);
+    const sceneCount = duration<=15?2:duration<=30?3:duration<=45?4:5;
+    const ctxLines = [
+      strategy?.resumen   ? "RESUMEN ESTRATÉGICO DEL MES: " + strategy.resumen : "",
+      brandForm.objetivo  ? "OBJETIVO DEL MES: "            + brandForm.objetivo : "",
+      brandForm.mes       ? "MES: "                         + brandForm.mes : "",
+      brandForm.pilares?.length ? "PILARES: "               + brandForm.pilares.join(", ") : "",
+      brandForm.redes?.length   ? "REDES ACTIVAS: "         + brandForm.redes.join(", ") : "",
+      post.hashtags ? "HASHTAGS DEL POST: " + post.hashtags : "",
+      post.cta      ? "CTA DEL POST: "      + post.cta      : "",
+    ].filter(Boolean).join("\n");
+
+    const sceneLines = Array.from(
+      {length: sceneCount},
+      (_, i) => "ESCENA " + (i+1) + ": [punto de valor concreto máx 12 palabras]"
+    ).join("\n");
+
+    const prompt = "Sos un experto en contenido para redes sociales en español latinoamericano.\n"
+      + "Generá un guión para un video corto (" + duration + " segundos) para " + plt.label + ".\n\n"
+      + "CONTEXTO DE MARCA:\n"
+      + "NEGOCIO: " + brandForm.negocio + (brandForm.industria ? " — " + brandForm.industria : "") + "\n"
+      + "AUDIENCIA: " + (brandForm.audiencia || "general") + "\n"
+      + "TONO: " + brandForm.tono + "\n"
+      + ctxLines + "\n\n"
+      + "POST QUE ORIGINA ESTE VIDEO:\n"
+      + "RED: " + post.red + " | PILAR: " + post.pilar + (post.tipo ? " | TIPO: " + post.tipo : "") + "\n"
+      + "COPY: " + post.copy + "\n\n"
+      + "INSTRUCCIONES:\n"
+      + "- El video debe ser la versión audiovisual del post, NO una repetición literal\n"
+      + "- Respetá el tono, la audiencia y el objetivo estratégico del mes\n"
+      + "- El GANCHO debe detener el scroll en los primeros 2 segundos\n"
+      + "- Generá exactamente " + (sceneCount+2) + " secciones con ESTE FORMATO EXACTO (sin texto extra, sin markdown):\n\n"
+      + "GANCHO: [frase de impacto máx 10 palabras]\n"
+      + sceneLines + "\n"
+      + "CTA: [llamada a acción directa máx 8 palabras]\n\n"
+      + "Respondé SOLO con las secciones.";
+    try {
+      const raw = await callClaude([{role:"user",content:prompt}], 400);
+      const parsed = parseReelScript(raw);
+      const durPer = Math.floor(duration/parsed.length);
+      const BG_PAIRS = [["#0C0C0F","#7B35D4"],["#0A0A2E","#2A9D8F"],["#1A0A2E","#9F5FF0"],["#0A1A0A","#2A9D8F"],["#1A0A0A","#E63946"]];
+      const newScenes = parsed.map((p,i) => ({
+        ...makeScene(p.label, p.text),
+        dur: i===parsed.length-1 ? duration-durPer*(parsed.length-1) : durPer,
+        bgColor: BG_PAIRS[i%5][0], bgColor2: BG_PAIRS[i%5][1],
+        logo: brandForm.logoSrc ? {src:brandForm.logoSrc,xF:0.06,yF:0.05,wF:0.18,ar:1} : null,
+      }));
+      /* cache logo */
+      if (brandForm.logoSrc) cacheImg(brandForm.logoSrc);
+      setScenes(newScenes); setSelScene(0); setSelBoxId(null); setStep(2);
+    } catch(e) { setGenError(`Error: ${e.message}`); }
+    finally { setGenLoading(false); }
+  };
+
+  /* ── record video ── */
   const handleRecord = () => {
-    const canvas = canvasRef.current; if (!canvas || rendering) return;
+    const canvas = renderCanvasRef.current; if (!canvas||rendering) return;
     const ctx = canvas.getContext("2d");
-    const W = plt.w, H = plt.h;
-    const fps = 30;
-    const chunks = [];
-
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-
+    const W=plt.w, H=plt.h, fps=30, chunks=[];
+    cancelAnimationFrame(recRaf.current);
     let recorder;
     try {
-      const capFn = canvas.captureStream || canvas.mozCaptureStream;
+      const capFn = canvas.captureStream||canvas.mozCaptureStream;
       if (!capFn) throw new Error("no captureStream");
       const stream = capFn.call(canvas, fps);
-      try { recorder = new MediaRecorder(stream, { mimeType: "video/webm;codecs=vp9" }); }
+      try { recorder = new MediaRecorder(stream,{mimeType:"video/webm;codecs=vp9"}); }
       catch { recorder = new MediaRecorder(stream); }
-    } catch (e) {
-      alert("Tu navegador no soporta grabación de canvas. Usá Chrome o Edge.");
+    } catch {
+      alert("Tu navegador no soporta grabación. Usá Chrome o Edge.");
       return;
     }
-
-    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
     recorder.onstop = () => {
-      setVideoBlob(new Blob(chunks, { type: "video/webm" }));
+      const blob = new Blob(chunks,{type:"video/webm"});
+      setVideoBlob(blob);
+      /* convert to base64 for persistent saving */
+      const reader = new FileReader();
+      reader.onload = ev => setVideoB64(ev.target.result);
+      reader.readAsDataURL(blob);
       setRendering(false);
     };
     recorder.start(200);
-    setRendering(true); setProgress(0); setVideoBlob(null);
+    setRendering(true); setProgress(0); setVideoBlob(null); setVideoB64(null);
 
-    // Build frame timeline: [ {scene, startFrame, totalFrames} ]
-    const timeline = scenes.map(s => ({ scene: s, frames: s.dur * fps }));
-    const totalFrames = timeline.reduce((a, t) => a + t.frames, 0);
-    let globalFrame = 0;
-
-    const draw = () => {
-      // Find which scene we're in
-      let acc = 0, sceneObj = null, frameInScene = 0, sceneTotalFrames = 1;
-      for (const slot of timeline) {
-        if (globalFrame < acc + slot.frames) {
-          sceneObj = slot.scene;
-          frameInScene = globalFrame - acc;
-          sceneTotalFrames = slot.frames;
-          break;
-        }
-        acc += slot.frames;
+    const timeline = scenes.map(s=>({scene:s,frames:s.dur*fps}));
+    const totalFrames = timeline.reduce((a,t)=>a+t.frames,0);
+    let gf=0;
+    const draw=()=>{
+      let acc=0; let sceneObj=null; let fi=0; let sf=1;
+      for(const slot of timeline){
+        if(gf<acc+slot.frames){sceneObj=slot.scene;fi=gf-acc;sf=slot.frames;break;}
+        acc+=slot.frames;
       }
-      if (!sceneObj) { recorder.stop(); return; }
-
-      const t = globalFrame / fps;
-
-      // Transition alpha
-      const IN_F = Math.min(fps * 0.35, 10);
-      const OUT_F = Math.min(fps * 0.25, 8);
-      const alpha = frameInScene < IN_F
-        ? frameInScene / IN_F
-        : frameInScene > sceneTotalFrames - OUT_F
-          ? (sceneTotalFrames - frameInScene) / OUT_F
-          : 1;
-
-      drawReelFrame(ctx, W, H, sceneObj, t, sceneObj.dur, frameInScene, Math.max(0, Math.min(1, alpha)), false);
-
-      // Progress bar
-      const prog = globalFrame / totalFrames;
-      ctx.fillStyle = "rgba(255,255,255,.08)"; ctx.fillRect(0, H-5, W, 5);
-      const pg = ctx.createLinearGradient(0,0,W,0);
-      pg.addColorStop(0, "#7B35D4"); pg.addColorStop(1, "#2A9D8F");
-      ctx.fillStyle = pg; ctx.fillRect(0, H-5, W*prog, 5);
-
-      // Watermark
-      ctx.save(); ctx.globalAlpha = 0.1;
-      ctx.font = `bold ${Math.round(W*0.012)}px monospace`;
-      ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText("CHROMA", W/2, H-18); ctx.restore();
-
-      globalFrame++;
-      setProgress(Math.round((globalFrame / totalFrames) * 100));
-      if (globalFrame >= totalFrames) { recorder.stop(); return; }
-      rafRef.current = requestAnimationFrame(draw);
+      if(!sceneObj){recorder.stop();return;}
+      const t=gf/fps;
+      const INF=Math.min(fps*0.35,10),OUTF=Math.min(fps*0.25,8);
+      const alpha=fi<INF?fi/INF:fi>sf-OUTF?(sf-fi)/OUTF:1;
+      drawReelFrame(ctx,W,H,sceneObj,t,Math.max(0,Math.min(1,alpha)),bgImgCache.current);
+      /* progress bar */
+      const prog=gf/totalFrames;
+      ctx.fillStyle="rgba(255,255,255,.07)"; ctx.fillRect(0,H-6,W,6);
+      const pg=ctx.createLinearGradient(0,0,W,0);
+      pg.addColorStop(0,"#7B35D4"); pg.addColorStop(1,"#2A9D8F");
+      ctx.fillStyle=pg; ctx.fillRect(0,H-6,W*prog,6);
+      /* watermark */
+      ctx.save(); ctx.globalAlpha=0.1;
+      ctx.font=`bold ${Math.round(W*0.012)}px monospace`;
+      ctx.fillStyle="#fff"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText("CHROMA",W/2,H-18); ctx.restore();
+      gf++;
+      setProgress(Math.round((gf/totalFrames)*100));
+      if(gf>=totalFrames){recorder.stop();return;}
+      recRaf.current=requestAnimationFrame(draw);
     };
     draw();
   };
 
-  const handleDownload = () => {
-    if (!videoBlob) return;
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(videoBlob);
-    a.download = `${brandForm.negocio || "chroma"}-${platform}-reel-${Date.now()}.webm`;
-    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  const handleDownload=()=>{
+    if(!videoBlob)return;
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(videoBlob);
+    a.download=`${brandForm.negocio||"chroma"}-${platform}-reel-${Date.now()}.webm`;
+    a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
   };
 
-  const handleSave = async () => {
-    if (!videoBlob || !onSaveReel) return;
+  const handleSave=async()=>{
+    if(!videoB64||!onSaveReel)return;
     setSaving(true);
     try {
-      // Generate thumbnail from preview canvas
-      const thumbCanvas = previewCanvasRef.current;
-      const thumbUrl = thumbCanvas ? thumbCanvas.toDataURL("image/jpeg", 0.7) : null;
-      const blobUrl = URL.createObjectURL(videoBlob);
-      onSaveReel({ scenes, platform, duration }, blobUrl, thumbUrl, videoBlob);
+      /* thumbnail from first frame of first scene */
+      const tc=document.createElement("canvas");
+      tc.width=240; tc.height=Math.round(240*plt.h/plt.w);
+      const tctx=tc.getContext("2d");
+      drawReelFrame(tctx,tc.width,tc.height,scenes[0]||makeScene(),0,1,bgImgCache.current);
+      const thumb=tc.toDataURL("image/jpeg",0.75);
+      onSaveReel({scenes,platform,duration}, videoB64, thumb);
     } finally { setSaving(false); }
   };
 
-  /* ── Bg image file handler ── */
-  const handleBgFile = (sceneId, file) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => updScene(sceneId, { bgImage: ev.target.result, bgType: "image" });
+  /* ── file handlers ── */
+  const handleLogoFile=(scId,file)=>{
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const src=ev.target.result;
+      const img=new Image();
+      img.onload=()=>{
+        bgImgCache.current[src]=img;
+        setScenes(p=>p.map(s=>s.id!==scId?s:{...s,logo:{src,xF:0.06,yF:0.05,wF:0.18,ar:img.height/img.width}}));
+      };
+      img.src=src;
+    };
+    reader.readAsDataURL(file);
+  };
+  const handleBgFile=(scId,file)=>{
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{ cacheImg(ev.target.result); updScene(scId,{bgImage:ev.target.result,bgType:"image"}); };
     reader.readAsDataURL(file);
   };
 
-  /* ── Styles ── */
-  const RE = {
-    lbl: { display: "block", fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", color: C.accentLt, marginBottom: 5, fontFamily: "Georgia,serif" },
-    inp: { width: "100%", background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 7, color: C.text, fontSize: 12, padding: "7px 9px", fontFamily: "Georgia,serif", boxSizing: "border-box", outline: "none", marginBottom: 7 },
-    chip: (active) => ({ padding: "5px 10px", borderRadius: 5, border: `1px solid ${active ? C.accent : C.border}`, background: active ? `${C.accent}22` : "transparent", color: active ? C.accentLt : C.muted, fontSize: 10, cursor: "pointer", fontFamily: "Georgia,serif", transition: "all .15s", whiteSpace: "nowrap" }),
-    sec: { borderTop: `1px solid ${C.border}`, paddingTop: 10, marginTop: 10 },
-    iconBtn: (active) => ({ width: 28, height: 26, borderRadius: 5, border: `1px solid ${active ? C.accent : C.border}`, background: active ? `${C.accent}22` : "transparent", color: active ? C.accentLt : C.muted, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }),
-    alignBtn: (active) => ({ flex: 1, height: 26, borderRadius: 5, border: `1px solid ${active ? C.accent : C.border}`, background: active ? `${C.accent}22` : "transparent", color: active ? C.accentLt : C.muted, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }),
+  /* ── styles ── */
+  const RE={
+    lbl:{display:"block",fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",color:C.accentLt,marginBottom:5,fontFamily:"Georgia,serif"},
+    inp:{width:"100%",background:C.surf3,border:`1px solid ${C.border}`,borderRadius:7,color:C.text,fontSize:12,padding:"7px 9px",fontFamily:"Georgia,serif",boxSizing:"border-box",outline:"none",marginBottom:7},
+    chip:(active)=>({padding:"5px 9px",borderRadius:5,border:`1px solid ${active?C.accent:C.border}`,background:active?`${C.accent}22`:"transparent",color:active?C.accentLt:C.muted,fontSize:10,cursor:"pointer",fontFamily:"Georgia,serif",transition:"all .15s",whiteSpace:"nowrap"}),
+    sec:{borderTop:`1px solid ${C.border}`,paddingTop:10,marginTop:10},
+    iconBtn:(active)=>({width:28,height:26,borderRadius:5,border:`1px solid ${active?C.accent:C.border}`,background:active?`${C.accent}22`:"transparent",color:active?C.accentLt:C.muted,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}),
+    alignBtn:(active)=>({flex:1,height:26,borderRadius:5,border:`1px solid ${active?C.accent:C.border}`,background:active?`${C.accent}22`:"transparent",color:active?C.accentLt:C.muted,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}),
   };
-
-  // Preview canvas size
-  const PREV_H = 420;
-  const PREV_W = Math.round(PREV_H * (plt.w / plt.h));
 
   return (
     <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.78)", zIndex: 60 }} />
-      <div style={{ position: "fixed", right: 0, top: 0, bottom: 0, width: "min(980px,99vw)", background: C.surface, borderLeft: `1px solid ${C.border}`, zIndex: 61, display: "flex", flexDirection: "column", animation: "slideIn .25s ease" }}>
+      <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.78)",zIndex:60}}/>
+      <div style={{position:"fixed",right:0,top:0,bottom:0,width:"min(980px,99vw)",background:C.surface,borderLeft:`1px solid ${C.border}`,zIndex:61,display:"flex",flexDirection:"column",animation:"slideIn .25s ease",userSelect:dragging?"none":"auto",cursor:dragging?"grabbing":"default"}}>
 
         {/* Header */}
-        <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 14, color: C.text, fontFamily: "Georgia,serif" }}>🎬 Editor de Reel</div>
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{post.red} · {post.pilar}</div>
+        <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:14,flexShrink:0}}>
+          <div style={{flex:1}}>
+            <div style={{fontSize:14,color:C.text,fontFamily:"Georgia,serif"}}>🎬 Editor de Reel</div>
+            <div style={{fontSize:11,color:C.muted,marginTop:1}}>{post.red} · {post.pilar}</div>
           </div>
-          {/* Step tabs */}
-          <div style={{ display: "flex", gap: 3, background: C.surf2, borderRadius: 8, padding: 3, border: `1px solid ${C.border}` }}>
-            {[["1","Configurar"], ["2","Escenas"], ["3","Grabar"]].map(([n, label]) => (
-              <button key={n} disabled={parseInt(n) > step} onClick={() => parseInt(n) < step && setStep(parseInt(n))}
-                style={{ padding: "6px 14px", borderRadius: 6, border: "none", background: step === parseInt(n) ? C.accent : "transparent", color: step === parseInt(n) ? C.text : step > parseInt(n) ? C.accentLt : C.muted, fontSize: 12, cursor: step >= parseInt(n) ? "pointer" : "not-allowed", fontFamily: "Georgia,serif", transition: "all .15s" }}>
+          <div style={{display:"flex",gap:3,background:C.surf2,borderRadius:8,padding:3,border:`1px solid ${C.border}`}}>
+            {[["1","Configurar"],["2","Escenas"],["3","Grabar"]].map(([n,label])=>(
+              <button key={n} disabled={parseInt(n)>step} onClick={()=>parseInt(n)<step&&setStep(parseInt(n))}
+                style={{padding:"6px 14px",borderRadius:6,border:"none",background:step===parseInt(n)?C.accent:"transparent",color:step===parseInt(n)?C.text:step>parseInt(n)?C.accentLt:C.muted,fontSize:12,cursor:step>=parseInt(n)?"pointer":"not-allowed",fontFamily:"Georgia,serif"}}>
                 {n}. {label}
               </button>
             ))}
           </div>
-          <button onClick={onClose} style={{ background: "transparent", border: "none", color: C.muted, fontSize: 20, cursor: "pointer" }}>✕</button>
+          <button onClick={onClose} style={{background:"transparent",border:"none",color:C.muted,fontSize:20,cursor:"pointer"}}>✕</button>
         </div>
 
         {/* Body */}
-        <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        <div style={{flex:1,display:"flex",overflow:"hidden"}}>
 
-          {/* ── LEFT: controls ── */}
-          <div style={{ width: 290, flexShrink: 0, overflowY: "auto", borderRight: `1px solid ${C.border}`, padding: "14px 14px 30px" }}>
+          {/* ── LEFT sidebar ── */}
+          <div style={{width:285,flexShrink:0,overflowY:"auto",borderRight:`1px solid ${C.border}`,padding:"12px 13px 30px"}}>
 
-            {/* ── STEP 1: Config ── */}
-            {step === 1 && (
+            {/* STEP 1 */}
+            {step===1&&(
               <div>
                 <label style={RE.lbl}>Plataforma</label>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
-                  {REEL_PLATFORMS.map(p => (
-                    <button key={p.id} style={RE.chip(platform === p.id)} onClick={() => setPlatform(p.id)}>{p.label}</button>
-                  ))}
+                <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>
+                  {REEL_PLATFORMS.map(p=><button key={p.id} style={RE.chip(platform===p.id)} onClick={()=>setPlatform(p.id)}>{p.label}</button>)}
                 </div>
-                <label style={RE.lbl}>Duración (segundos)</label>
-                <div style={{ display: "flex", gap: 5, marginBottom: 12 }}>
-                  {REEL_DURATIONS.map(d => (
-                    <button key={d} style={{ ...RE.chip(duration === d), flex: 1, justifyContent: "center", display: "flex" }} onClick={() => setDuration(d)}>{d}s</button>
-                  ))}
+                <label style={RE.lbl}>Duración</label>
+                <div style={{display:"flex",gap:4,marginBottom:12}}>
+                  {REEL_DURATIONS.map(d=><button key={d} style={{...RE.chip(duration===d),flex:1,justifyContent:"center",display:"flex"}} onClick={()=>setDuration(d)}>{d}s</button>)}
                 </div>
-                <div style={{ background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "11px 13px", marginBottom: 14, fontSize: 12, color: C.muted, fontFamily: "Georgia,serif", lineHeight: 1.6 }}>
-                  <div style={{ color: C.text, marginBottom: 4, fontSize: 12 }}>📋 Post seleccionado:</div>
-                  <div style={{ color: C.accentLt, marginBottom: 4 }}>{post.red} · {post.pilar}</div>
-                  <div style={{ fontSize: 11 }}>{post.copy?.slice(0, 90)}{post.copy?.length > 90 ? "…" : ""}</div>
+                <div style={{background:C.surf2,border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 13px",marginBottom:10,fontSize:11,lineHeight:1.7,fontFamily:"Georgia,serif"}}>
+                  <div style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:C.accentLt,marginBottom:7}}>Contexto de estrategia</div>
+                  {strategy?.resumen && (
+                    <div style={{color:C.muted,marginBottom:6,borderLeft:`2px solid ${C.accent}`,paddingLeft:8,fontSize:11}}>
+                      {strategy.resumen.slice(0,120)}{strategy.resumen.length>120?"…":""}
+                    </div>
+                  )}
+                  <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:"3px 8px",fontSize:11}}>
+                    <span style={{color:C.muted}}>Negocio</span><span style={{color:C.text}}>{brandForm.negocio}{brandForm.industria?` — ${brandForm.industria}`:""}</span>
+                    {brandForm.mes&&<><span style={{color:C.muted}}>Mes</span><span style={{color:C.text}}>{brandForm.mes}</span></>}
+                    {brandForm.objetivo&&<><span style={{color:C.muted}}>Objetivo</span><span style={{color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{brandForm.objetivo.slice(0,50)}{brandForm.objetivo.length>50?"…":""}</span></>}
+                    {brandForm.tono&&<><span style={{color:C.muted}}>Tono</span><span style={{color:C.text}}>{brandForm.tono}</span></>}
+                    {brandForm.pilares?.length>0&&<><span style={{color:C.muted}}>Pilares</span><span style={{color:C.text}}>{brandForm.pilares.join(", ")}</span></>}
+                  </div>
                 </div>
-                {genError && <div style={{ background: "#2A0808", border: "1px solid #7B1F1F", borderRadius: 7, padding: "9px 12px", color: "#FF9999", fontSize: 12, marginBottom: 10 }}>{genError}</div>}
-                <button
-                  onClick={handleGenerate} disabled={genLoading}
-                  style={{ width: "100%", background: genLoading ? C.surf3 : C.accent, border: "none", borderRadius: 8, color: C.text, fontSize: 13, padding: "12px", cursor: genLoading ? "not-allowed" : "pointer", fontFamily: "Georgia,serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                  {genLoading
-                    ? <>{[0,1,2].map(i => <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: C.accentLt, display: "inline-block", animation: "bounce 1.2s infinite", animationDelay: `${i*.2}s` }} />)} Generando guión…</>
-                    : "→ Generar guión con IA"}
+                <div style={{background:`${C.accent}11`,border:`1px solid ${C.accent}33`,borderRadius:8,padding:"9px 12px",marginBottom:14}}>
+                  <div style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:C.accentLt,marginBottom:5}}>Post que origina este reel</div>
+                  <div style={{fontSize:11,color:C.accentLt,marginBottom:3}}>{post.red} · {post.pilar} · {post.tipo||""}</div>
+                  <div style={{fontSize:11,color:C.muted}}>{post.copy?.slice(0,100)}{post.copy?.length>100?"…":""}</div>
+                </div>
+                {genError&&<div style={{background:"#2A0808",border:"1px solid #7B1F1F",borderRadius:7,padding:"9px 12px",color:"#FF9999",fontSize:12,marginBottom:10}}>{genError}</div>}
+                <button onClick={handleGenerate} disabled={genLoading}
+                  style={{width:"100%",background:genLoading?C.surf3:C.accent,border:"none",borderRadius:8,color:C.text,fontSize:13,padding:"12px",cursor:genLoading?"not-allowed":"pointer",fontFamily:"Georgia,serif",display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+                  {genLoading?<>{[0,1,2].map(i=><span key={i} style={{width:6,height:6,borderRadius:"50%",background:C.accentLt,display:"inline-block",animation:"bounce 1.2s infinite",animationDelay:`${i*.2}s`}}/>)}Generando…</>:"→ Generar guión con IA"}
                 </button>
               </div>
             )}
 
-            {/* ── STEP 2: Scene editor ── */}
-            {step === 2 && sel && (
+            {/* STEP 2 */}
+            {step===2&&sel&&(
               <div>
                 {/* Scene list */}
                 <label style={RE.lbl}>Escenas ({scenes.length})</label>
-                <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: 10 }}>
-                  {scenes.map((s, i) => (
-                    <div key={s.id} onClick={() => setSelScene(i)}
-                      style={{ display: "flex", alignItems: "center", gap: 6, background: selScene === i ? `${C.accent}22` : C.surf2, border: `1px solid ${selScene === i ? C.accent : C.border}`, borderRadius: 6, padding: "6px 9px", cursor: "pointer", transition: "all .15s" }}>
-                      <span style={{ fontSize: 9, background: selScene === i ? C.accent : C.surf3, color: selScene === i ? "#fff" : C.muted, borderRadius: 3, padding: "1px 5px", flexShrink: 0, fontFamily: "monospace" }}>{s.label.slice(0,4)}</span>
-                      <span style={{ fontSize: 10, color: selScene === i ? C.text : C.muted, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "Georgia,serif" }}>{s.text.slice(0, 24)}{s.text.length > 24 ? "…" : ""}</span>
-                      <span style={{ fontSize: 9, color: C.muted, flexShrink: 0 }}>{s.dur}s</span>
+                <div style={{display:"flex",flexDirection:"column",gap:3,marginBottom:10}}>
+                  {scenes.map((s,i)=>(
+                    <div key={s.id} onClick={()=>{setSelScene(i);setSelBoxId(null);}}
+                      style={{display:"flex",alignItems:"center",gap:6,background:selScene===i?`${C.accent}22`:C.surf2,border:`1px solid ${selScene===i?C.accent:C.border}`,borderRadius:6,padding:"6px 9px",cursor:"pointer"}}>
+                      <span style={{fontSize:9,background:selScene===i?C.accent:C.surf3,color:selScene===i?"#fff":C.muted,borderRadius:3,padding:"1px 5px",fontFamily:"monospace",flexShrink:0}}>{s.label.slice(0,4)}</span>
+                      <span style={{fontSize:10,color:selScene===i?C.text:C.muted,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"Georgia,serif"}}>{(s.textBoxes[0]?.text||"").slice(0,22)}{(s.textBoxes[0]?.text?.length||0)>22?"…":""}</span>
+                      <span style={{fontSize:9,color:C.muted,flexShrink:0}}>{s.dur}s</span>
                     </div>
                   ))}
                 </div>
 
-                {/* Selected scene format */}
-                <div style={{ background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 10px 6px" }}>
-                  <label style={RE.lbl}>Texto de la escena</label>
-                  <textarea value={sel.text} onChange={e => updScene(sel.id, { text: e.target.value })} rows={3} style={RE.inp} />
+                {/* Duration */}
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                  <span style={{fontSize:9,color:C.accentLt,fontFamily:"Georgia,serif",whiteSpace:"nowrap"}}>DURACIÓN ESCENA</span>
+                  <input type="range" min={2} max={20} value={sel.dur} onChange={e=>updScene(sel.id,{dur:parseInt(e.target.value)})} style={{flex:1,accentColor:C.accent}}/>
+                  <span style={{fontSize:11,color:C.muted,minWidth:26,fontFamily:"Georgia,serif"}}>{sel.dur}s</span>
+                </div>
 
-                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 7 }}>
-                    <span style={{ fontSize: 9, color: C.accentLt, fontFamily: "Georgia,serif", whiteSpace: "nowrap" }}>DURACIÓN</span>
-                    <input type="range" min={2} max={20} value={sel.dur} onChange={e => updScene(sel.id, { dur: parseInt(e.target.value) })} style={{ flex: 1, accentColor: C.accent }} />
-                    <span style={{ fontSize: 11, color: C.muted, minWidth: 26, fontFamily: "Georgia,serif" }}>{sel.dur}s</span>
-                  </div>
-
-                  {/* Font + B/I */}
-                  <label style={RE.lbl}>Tipografía</label>
-                  <div style={{ display: "flex", gap: 4, marginBottom: 6, alignItems: "center" }}>
-                    <select value={sel.fontFamily} onChange={e => updScene(sel.id, { fontFamily: e.target.value })}
-                      style={{ flex: 1, background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 5, color: C.text, fontSize: 11, padding: "4px 5px", outline: "none", cursor: "pointer" }}>
-                      {REEL_FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
-                    </select>
-                    <button style={RE.iconBtn(sel.bold)} onClick={() => updScene(sel.id, { bold: !sel.bold })}><strong>B</strong></button>
-                    <button style={RE.iconBtn(sel.italic)} onClick={() => updScene(sel.id, { italic: !sel.italic })}><em>I</em></button>
-                  </div>
-
-                  {/* Size */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
-                    <input type="range" min={14} max={80} value={sel.fontSize} onChange={e => updScene(sel.id, { fontSize: parseInt(e.target.value) })} style={{ flex: 1, accentColor: C.accent }} />
-                    <span style={{ fontSize: 11, color: C.muted, minWidth: 34, fontFamily: "Georgia,serif" }}>{sel.fontSize}px</span>
-                  </div>
-
-                  {/* Align */}
-                  <div style={{ display: "flex", gap: 4, marginBottom: 7 }}>
-                    {[["left","←"],["center","↔"],["right","→"]].map(([v,ic]) => (
-                      <button key={v} style={RE.alignBtn(sel.align === v)} onClick={() => updScene(sel.id, { align: v })}>{ic}</button>
+                {/* Text boxes list */}
+                <div style={RE.sec}>
+                  <label style={RE.lbl}>Cajas de texto</label>
+                  <div style={{display:"flex",flexDirection:"column",gap:3,marginBottom:7}}>
+                    {sel.textBoxes.map((tb,i)=>(
+                      <div key={tb.id} onClick={()=>setSelBoxId(tb.id)}
+                        style={{display:"flex",alignItems:"center",gap:5,background:selBoxId===tb.id?`${C.accent}22`:C.surf2,border:`1px solid ${selBoxId===tb.id?C.accent:C.border}`,borderRadius:6,padding:"5px 8px",cursor:"pointer"}}>
+                        <span style={{fontSize:10,color:selBoxId===tb.id?C.accentLt:C.muted,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"Georgia,serif"}}>☰ Caja {i+1} {tb.text?`— ${tb.text.slice(0,16)}…`:""}</span>
+                        {sel.textBoxes.length>1&&<button onClick={e=>{e.stopPropagation();setScenes(p=>p.map(s=>s.id!==sel.id?s:{...s,textBoxes:s.textBoxes.filter(t=>t.id!==tb.id)}));if(selBoxId===tb.id)setSelBoxId(null);}} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:11,lineHeight:1}}>✕</button>}
+                      </div>
                     ))}
                   </div>
+                  <button onClick={()=>{const nb=makeTBReel("Texto nuevo",0.07,0.5);setScenes(p=>p.map(s=>s.id!==sel.id?s:{...s,textBoxes:[...s.textBoxes,nb]}));setSelBoxId(nb.id);}}
+                    style={{width:"100%",background:C.surf3,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:11,padding:"6px 10px",cursor:"pointer",fontFamily:"Georgia,serif",marginBottom:8}}>+ Nueva caja de texto</button>
 
-                  {/* Text color */}
-                  <label style={RE.lbl}>Color de texto</label>
-                  <ColorInput value={sel.color} onChange={v => updScene(sel.id, { color: v })} />
-
-                  {/* Label color + visibility */}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                    <label style={{ ...RE.lbl, marginBottom: 0 }}>Mostrar etiqueta escena</label>
-                    <Toggle on={sel.showLabel} onToggle={() => updScene(sel.id, { showLabel: !sel.showLabel })} />
-                  </div>
-                  {sel.showLabel && <ColorInput value={sel.labelColor} onChange={v => updScene(sel.id, { labelColor: v })} />}
+                  {/* Selected TB controls */}
+                  {selTB&&!selIsLogo&&(
+                    <div style={{background:C.surf2,border:`1px solid ${C.border}`,borderRadius:7,padding:"9px 9px 5px"}}>
+                      <label style={RE.lbl}>Texto</label>
+                      <textarea value={selTB.text} onChange={e=>updTB(sel.id,selTB.id,{text:e.target.value})} rows={3} style={RE.inp}/>
+                      <div style={{display:"flex",gap:4,marginBottom:6,alignItems:"center"}}>
+                        <select value={selTB.fontFamily} onChange={e=>updTB(sel.id,selTB.id,{fontFamily:e.target.value})}
+                          style={{flex:1,background:C.surf3,border:`1px solid ${C.border}`,borderRadius:5,color:C.text,fontSize:11,padding:"4px 5px",outline:"none",cursor:"pointer"}}>
+                          {REEL_FONTS.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}
+                        </select>
+                        <button style={RE.iconBtn(selTB.bold)} onClick={()=>updTB(sel.id,selTB.id,{bold:!selTB.bold})}><strong>B</strong></button>
+                        <button style={RE.iconBtn(selTB.italic)} onClick={()=>updTB(sel.id,selTB.id,{italic:!selTB.italic})}><em>I</em></button>
+                        <button style={{...RE.iconBtn(selTB.underline),textDecoration:"underline"}} onClick={()=>updTB(sel.id,selTB.id,{underline:!selTB.underline})}>U</button>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                        <input type="range" min={20} max={120} value={selTB.fontSize} onChange={e=>updTB(sel.id,selTB.id,{fontSize:parseInt(e.target.value)})} style={{flex:1,accentColor:C.accent}}/>
+                        <span style={{fontSize:11,color:C.muted,minWidth:36,fontFamily:"Georgia,serif"}}>{selTB.fontSize}px</span>
+                      </div>
+                      <div style={{display:"flex",gap:4,marginBottom:6}}>
+                        {[["left","←"],["center","↔"],["right","→"]].map(([v,ic])=>(
+                          <button key={v} style={RE.alignBtn(selTB.align===v)} onClick={()=>updTB(sel.id,selTB.id,{align:v})}>{ic}</button>
+                        ))}
+                      </div>
+                      <label style={RE.lbl}>Color texto</label>
+                      <ColorInput value={selTB.color} onChange={v=>updTB(sel.id,selTB.id,{color:v})}/>
+                    </div>
+                  )}
                 </div>
+
+                {/* Logo */}
+                <div style={RE.sec}>
+                  <label style={RE.lbl}>Logo</label>
+                  <input ref={logoFileRef} type="file" accept="image/png,image/svg+xml,image/jpeg,image/webp" style={{display:"none"}}
+                    onChange={e=>handleLogoFile(sel.id,e.target.files?.[0])}/>
+                  <div style={{display:"flex",gap:5,marginBottom:7}}>
+                    <button onClick={()=>logoFileRef.current?.click()}
+                      style={{flex:1,background:C.surf3,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:11,padding:"6px 10px",cursor:"pointer",fontFamily:"Georgia,serif"}}>
+                      📁 {sel.logo?"Cambiar logo":"Subir logo"}
+                    </button>
+                    {sel.logo&&<button onClick={()=>updScene(sel.id,{logo:null})} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,color:C.muted,fontSize:11,padding:"6px 8px",cursor:"pointer"}}>✕</button>}
+                  </div>
+                  {sel.logo&&(
+                    <>
+                      <div style={{fontSize:10,color:C.muted,fontFamily:"Georgia,serif",marginBottom:6}}>Arrastrá en la vista previa · ◢ para escalar</div>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <input type="range" min={4} max={60} value={Math.round(sel.logo.wF*100)} onChange={e=>updLogo(sel.id,{wF:parseInt(e.target.value)/100})} style={{flex:1,accentColor:C.teal}}/>
+                        <span style={{fontSize:11,color:C.muted,minWidth:32,fontFamily:"Georgia,serif"}}>{Math.round(sel.logo.wF*100)}%</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Label */}
+                <div style={{...RE.sec,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div><div style={{fontSize:11,color:C.text,fontFamily:"Georgia,serif"}}>Etiqueta escena</div></div>
+                  <Toggle on={sel.showLabel} onToggle={()=>updScene(sel.id,{showLabel:!sel.showLabel})}/>
+                </div>
+                {sel.showLabel&&<ColorInput value={sel.labelColor} onChange={v=>updScene(sel.id,{labelColor:v})}/>}
 
                 {/* Background */}
                 <div style={RE.sec}>
-                  <label style={RE.lbl}>Fondo de escena</label>
-                  <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
-                    {[["gradient","Gradiente"],["solid","Sólido"],["image","Imagen"]].map(([v,label]) => (
-                      <button key={v} style={{ ...RE.chip(sel.bgType === v), flex: 1 }} onClick={() => updScene(sel.id, { bgType: v })}>{label}</button>
+                  <label style={RE.lbl}>Fondo</label>
+                  <div style={{display:"flex",gap:4,marginBottom:7}}>
+                    {[["gradient","Gradiente"],["solid","Sólido"],["image","Imagen"]].map(([v,l])=>(
+                      <button key={v} style={{...RE.chip(sel.bgType===v),flex:1}} onClick={()=>updScene(sel.id,{bgType:v})}>{l}</button>
                     ))}
                   </div>
-
-                  {sel.bgType === "solid" && (
-                    <ColorInput value={sel.bgColor} onChange={v => updScene(sel.id, { bgColor: v })} />
-                  )}
-
-                  {sel.bgType === "gradient" && (
+                  {sel.bgType==="solid"&&<ColorInput value={sel.bgColor} onChange={v=>updScene(sel.id,{bgColor:v})}/>}
+                  {sel.bgType==="gradient"&&(
                     <>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                        <div><div style={{ fontSize: 9, color: C.muted, marginBottom: 3, fontFamily: "Georgia,serif" }}>Color A</div><ColorInput value={sel.bgColor} onChange={v => updScene(sel.id, { bgColor: v })} /></div>
-                        <div><div style={{ fontSize: 9, color: C.muted, marginBottom: 3, fontFamily: "Georgia,serif" }}>Color B</div><ColorInput value={sel.bgColor2} onChange={v => updScene(sel.id, { bgColor2: v })} /></div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                        <div><div style={{fontSize:9,color:C.muted,marginBottom:3,fontFamily:"Georgia,serif"}}>Color A</div><ColorInput value={sel.bgColor} onChange={v=>updScene(sel.id,{bgColor:v})}/></div>
+                        <div><div style={{fontSize:9,color:C.muted,marginBottom:3,fontFamily:"Georgia,serif"}}>Color B</div><ColorInput value={sel.bgColor2} onChange={v=>updScene(sel.id,{bgColor2:v})}/></div>
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontSize: 9, color: C.muted, fontFamily: "Georgia,serif" }}>Ángulo</span>
-                        <input type="range" min={0} max={360} value={sel.bgAngle} onChange={e => updScene(sel.id, { bgAngle: parseInt(e.target.value) })} style={{ flex: 1, accentColor: C.accent }} />
-                        <span style={{ fontSize: 9, color: C.muted, minWidth: 30, fontFamily: "Georgia,serif" }}>{sel.bgAngle}°</span>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <span style={{fontSize:9,color:C.muted,fontFamily:"Georgia,serif"}}>Ángulo</span>
+                        <input type="range" min={0} max={360} value={sel.bgAngle} onChange={e=>updScene(sel.id,{bgAngle:parseInt(e.target.value)})} style={{flex:1,accentColor:C.accent}}/>
+                        <span style={{fontSize:9,color:C.muted,minWidth:28,fontFamily:"Georgia,serif"}}>{sel.bgAngle}°</span>
                       </div>
                     </>
                   )}
-
-                  {sel.bgType === "image" && (
+                  {sel.bgType==="image"&&(
                     <>
-                      <input type="file" accept="image/*" style={{ display: "none" }}
-                        ref={el => { if (el) bgFileRefs.current[sel.id] = el; }}
-                        onChange={e => handleBgFile(sel.id, e.target.files?.[0])} />
-                      <div style={{ display: "flex", gap: 5 }}>
-                        <button onClick={() => bgFileRefs.current[sel.id]?.click()}
-                          style={{ flex: 1, background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 11, padding: "7px 10px", cursor: "pointer", fontFamily: "Georgia,serif" }}>
-                          🖼 {sel.bgImage ? "Cambiar imagen" : "Subir imagen"}
+                      <input type="file" accept="image/*" style={{display:"none"}}
+                        ref={el=>{if(el)bgFileRefs.current[sel.id]=el;}}
+                        onChange={e=>handleBgFile(sel.id,e.target.files?.[0])}/>
+                      <div style={{display:"flex",gap:5}}>
+                        <button onClick={()=>bgFileRefs.current[sel.id]?.click()}
+                          style={{flex:1,background:C.surf3,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:11,padding:"6px 10px",cursor:"pointer",fontFamily:"Georgia,serif"}}>
+                          🖼 {sel.bgImage?"Cambiar":"Subir imagen"}
                         </button>
-                        {sel.bgImage && <button onClick={() => updScene(sel.id, { bgImage: null, bgType: "gradient" })} style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6, color: C.muted, fontSize: 11, padding: "7px 8px", cursor: "pointer" }}>✕</button>}
+                        {sel.bgImage&&<button onClick={()=>updScene(sel.id,{bgImage:null,bgType:"gradient"})} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,color:C.muted,fontSize:11,padding:"6px 8px",cursor:"pointer"}}>✕</button>}
                       </div>
-                      {sel.bgImage && (
-                        <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
-                          {["cover","contain"].map(f => <button key={f} style={RE.chip(sel.bgFit === f)} onClick={() => updScene(sel.id, { bgFit: f })}>{f}</button>)}
-                        </div>
-                      )}
+                      {sel.bgImage&&<div style={{display:"flex",gap:4,marginTop:6}}>{["cover","contain"].map(f=><button key={f} style={RE.chip(sel.bgFit===f)} onClick={()=>updScene(sel.id,{bgFit:f})}>{f}</button>)}</div>}
                     </>
                   )}
                 </div>
 
-                <button onClick={() => setStep(3)} style={{ width: "100%", marginTop: 14, background: C.accent, border: "none", borderRadius: 8, color: C.text, fontSize: 13, padding: "11px", cursor: "pointer", fontFamily: "Georgia,serif" }}>→ Continuar a grabar</button>
+                <button onClick={()=>setStep(3)} style={{width:"100%",marginTop:14,background:C.accent,border:"none",borderRadius:8,color:C.text,fontSize:13,padding:"11px",cursor:"pointer",fontFamily:"Georgia,serif"}}>→ Continuar a grabar</button>
               </div>
             )}
 
-            {/* ── STEP 3: Record ── */}
-            {step === 3 && (
+            {/* STEP 3 */}
+            {step===3&&(
               <div>
-                <div style={{ background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px", marginBottom: 14 }}>
-                  <div style={{ fontSize: 12, color: C.text, fontFamily: "Georgia,serif", marginBottom: 4 }}>Resumen del video</div>
-                  <div style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif", lineHeight: 1.7 }}>
+                <div style={{background:C.surf2,border:`1px solid ${C.border}`,borderRadius:8,padding:"12px 14px",marginBottom:14}}>
+                  <div style={{fontSize:12,color:C.text,fontFamily:"Georgia,serif",marginBottom:4}}>Resumen</div>
+                  <div style={{fontSize:11,color:C.muted,fontFamily:"Georgia,serif",lineHeight:1.7}}>
                     <div>📺 {plt.label} · {plt.w}×{plt.h}px</div>
-                    <div>🎞 {scenes.length} escenas · {scenes.reduce((a,s) => a+s.dur, 0)}s total</div>
+                    <div>🎞 {scenes.length} escenas · {scenes.reduce((a,s)=>a+s.dur,0)}s</div>
                     <div>⬇ Formato: .webm (Chrome/Edge)</div>
                   </div>
                 </div>
-
-                {rendering && (
-                  <div style={{ marginBottom: 14 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                      <span style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif" }}>Renderizando frames…</span>
-                      <span style={{ fontSize: 11, color: C.accentLt, fontFamily: "Georgia,serif" }}>{progress}%</span>
+                {rendering&&(
+                  <div style={{marginBottom:14}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+                      <span style={{fontSize:11,color:C.muted,fontFamily:"Georgia,serif"}}>Renderizando…</span>
+                      <span style={{fontSize:11,color:C.accentLt,fontFamily:"Georgia,serif"}}>{progress}%</span>
                     </div>
-                    <div style={{ height: 6, background: C.surf3, borderRadius: 3 }}>
-                      <div style={{ height: "100%", width: `${progress}%`, background: `linear-gradient(90deg, ${C.accent}, ${C.teal})`, borderRadius: 3, transition: "width .1s" }} />
+                    <div style={{height:6,background:C.surf3,borderRadius:3}}>
+                      <div style={{height:"100%",width:`${progress}%`,background:`linear-gradient(90deg,${C.accent},${C.teal})`,borderRadius:3,transition:"width .1s"}}/>
                     </div>
                   </div>
                 )}
-
                 <button onClick={handleRecord} disabled={rendering}
-                  style={{ width: "100%", background: rendering ? C.surf3 : "#E63946", border: "none", borderRadius: 8, color: C.text, fontSize: 13, padding: "12px", cursor: rendering ? "not-allowed" : "pointer", fontFamily: "Georgia,serif", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                  {rendering ? <>{[0,1,2].map(i => <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff", display: "inline-block", animation: "bounce 1.2s infinite", animationDelay: `${i*.2}s` }} />)}{progress}% renderizando…</> : "⏺ Grabar video"}
+                  style={{width:"100%",background:rendering?C.surf3:"#E63946",border:"none",borderRadius:8,color:C.text,fontSize:13,padding:"12px",cursor:rendering?"not-allowed":"pointer",fontFamily:"Georgia,serif",marginBottom:8,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                  {rendering?<>{[0,1,2].map(i=><span key={i} style={{width:6,height:6,borderRadius:"50%",background:"#fff",display:"inline-block",animation:"bounce 1.2s infinite",animationDelay:`${i*.2}s`}}/>)}{progress}% renderizando…</>:"⏺ Grabar video"}
                 </button>
-
-                {videoBlob && (
+                {videoBlob&&(
                   <>
-                    <div style={{ background: `${C.teal}18`, border: `1px solid ${C.teal}44`, borderRadius: 8, padding: "10px 12px", marginBottom: 10, fontSize: 11, color: C.teal, fontFamily: "Georgia,serif" }}>
-                      ✓ Video listo — {Math.round(videoBlob.size / 1024)}KB
+                    <div style={{background:`${C.teal}18`,border:`1px solid ${C.teal}44`,borderRadius:8,padding:"10px 12px",marginBottom:10,fontSize:11,color:C.teal,fontFamily:"Georgia,serif"}}>
+                      ✓ Video listo — {Math.round(videoBlob.size/1024)}KB
                     </div>
-                    <button onClick={handleDownload} style={{ width: "100%", background: C.teal, border: "none", borderRadius: 8, color: C.text, fontSize: 13, padding: "11px", cursor: "pointer", fontFamily: "Georgia,serif", marginBottom: 8 }}>⬇ Descargar .webm</button>
-                    {onSaveReel && (
-                      <button onClick={handleSave} disabled={saving} style={{ width: "100%", background: saving ? C.surf3 : C.accent, border: "none", borderRadius: 8, color: C.text, fontSize: 13, padding: "11px", cursor: saving ? "not-allowed" : "pointer", fontFamily: "Georgia,serif", marginBottom: 8 }}>
-                        {saving ? "Guardando…" : "💾 Guardar al post"}
+                    <button onClick={handleDownload} style={{width:"100%",background:C.teal,border:"none",borderRadius:8,color:C.text,fontSize:13,padding:"11px",cursor:"pointer",fontFamily:"Georgia,serif",marginBottom:8}}>⬇ Descargar .webm</button>
+                    {onSaveReel&&videoB64&&(
+                      <button onClick={handleSave} disabled={saving} style={{width:"100%",background:saving?C.surf3:C.accent,border:"none",borderRadius:8,color:C.text,fontSize:13,padding:"11px",cursor:saving?"not-allowed":"pointer",fontFamily:"Georgia,serif",marginBottom:8}}>
+                        {saving?"Guardando…":"💾 Guardar al post"}
                       </button>
                     )}
-                    <div style={{ fontSize: 10, color: C.muted, fontFamily: "Georgia,serif", textAlign: "center", lineHeight: 1.6 }}>
-                      .webm funciona en Chrome/Edge directo.<br/>Para Instagram usá <a href="https://cloudconvert.com" target="_blank" rel="noreferrer" style={{ color: C.accentLt }}>cloudconvert.com</a> para convertir a .mp4 gratis.
+                    <div style={{fontSize:10,color:C.muted,fontFamily:"Georgia,serif",textAlign:"center",lineHeight:1.6}}>
+                      Para Instagram convertí a .mp4 en <a href="https://cloudconvert.com" target="_blank" rel="noreferrer" style={{color:C.accentLt}}>cloudconvert.com</a> (gratis)
                     </div>
                   </>
                 )}
-
-                <button onClick={() => setStep(2)} style={{ width: "100%", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 12, padding: "9px", cursor: "pointer", fontFamily: "Georgia,serif", marginTop: 8 }}>← Volver a editar escenas</button>
+                <button onClick={()=>setStep(2)} style={{width:"100%",background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,color:C.muted,fontSize:12,padding:"9px",cursor:"pointer",fontFamily:"Georgia,serif",marginTop:8}}>← Volver a editar</button>
               </div>
             )}
           </div>
 
           {/* ── RIGHT: canvas preview ── */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: C.bg, overflow: "hidden", padding: "16px", gap: 10 }}>
-            <div style={{ fontSize: 10, color: C.muted, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "Georgia,serif" }}>
-              {step === 2 ? `Escena ${selScene + 1}/${scenes.length} — preview en vivo` : step === 3 ? `Canvas de render ${plt.w}×${plt.h}px` : `${plt.label} · ${plt.w}×${plt.h}px`}
+          <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:C.bg,overflow:"hidden",padding:"16px",gap:10}}>
+            <div style={{fontSize:10,color:C.muted,letterSpacing:"0.12em",textTransform:"uppercase",fontFamily:"Georgia,serif"}}>
+              {step===2?`Escena ${selScene+1}/${scenes.length} — clic para seleccionar · arrastrá para mover`:step===3?`Canvas render ${plt.w}×${plt.h}px`:`${plt.label} · ${plt.w}×${plt.h}px`}
             </div>
 
-            {/* Live preview (steps 1 & 2) */}
-            {step !== 3 && (
-              <canvas ref={previewCanvasRef} width={400} height={Math.round(400 * plt.h / plt.w)}
-                style={{ borderRadius: 10, boxShadow: "0 8px 40px rgba(0,0,0,.7)", maxWidth: "100%", maxHeight: PREV_H }} />
+            {step!==3&&(
+              <canvas ref={previewCanvasRef}
+                width={PREV_W} height={Math.round(PREV_H*plt.h/plt.w)}
+                style={{borderRadius:10,boxShadow:"0 8px 40px rgba(0,0,0,.7)",maxWidth:"100%",maxHeight:PREV_H,cursor:dragging?"grabbing":"crosshair"}}
+                onMouseDown={onPreviewMouseDown}/>
             )}
 
-            {/* Hidden render canvas (step 3) */}
-            <canvas ref={canvasRef} width={plt.w} height={plt.h}
-              style={{ display: step === 3 ? "block" : "none", borderRadius: 8, boxShadow: "0 8px 40px rgba(0,0,0,.7)", maxWidth: "100%", maxHeight: PREV_H }} />
+            <canvas ref={renderCanvasRef} width={plt.w} height={plt.h}
+              style={{display:step===3?"block":"none",borderRadius:8,boxShadow:"0 8px 40px rgba(0,0,0,.7)",maxWidth:"100%",maxHeight:PREV_H}}/>
 
-            {step === 1 && (
-              <div style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif", textAlign: "center", maxWidth: 280, lineHeight: 1.7 }}>
-                Configurá la plataforma y duración, luego generá el guión con IA para previsualizar el video.
-              </div>
-            )}
-            {step === 3 && !rendering && !videoBlob && (
-              <div style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif", textAlign: "center", lineHeight: 1.7 }}>
-                El canvas renderizará el video completo frame a frame.<br/>Usá Chrome o Edge para mejor compatibilidad.
-              </div>
-            )}
+            {step===1&&<div style={{fontSize:11,color:C.muted,fontFamily:"Georgia,serif",textAlign:"center",maxWidth:260,lineHeight:1.7}}>Configurá y generá el guión para ver la animación en vivo.</div>}
+            {step===3&&!rendering&&!videoBlob&&<div style={{fontSize:11,color:C.muted,fontFamily:"Georgia,serif",textAlign:"center",lineHeight:1.7}}>El video se renderiza frame a frame.<br/>Usá Chrome o Edge.</div>}
           </div>
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "11px 20px", borderTop: `1px solid ${C.border}`, display: "flex", gap: 10, alignItems: "center", flexShrink: 0, background: C.surface }}>
-          <div style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif" }}>🎬 Reel — {plt.label} · {scenes.reduce((a,s) => a+s.dur, 0) || duration}s</div>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 12, padding: "8px 16px", cursor: "pointer", fontFamily: "Georgia,serif" }}>Cerrar</button>
+        <div style={{padding:"11px 20px",borderTop:`1px solid ${C.border}`,display:"flex",gap:10,alignItems:"center",flexShrink:0,background:C.surface}}>
+          <div style={{fontSize:11,color:C.muted,fontFamily:"Georgia,serif"}}>🎬 {plt.label} · {scenes.reduce((a,s)=>a+s.dur,0)||duration}s</div>
+          <button onClick={onClose} style={{marginLeft:"auto",background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,color:C.muted,fontSize:12,padding:"8px 16px",cursor:"pointer",fontFamily:"Georgia,serif"}}>Cerrar</button>
         </div>
       </div>
     </>
@@ -2161,14 +2328,14 @@ export default function App() {
   const [reelSemana,  setReelSemana]  = useState(null);
 
   /* ── Save reel to post ── */
-  const handleSaveReel = (reelState, blobUrl, thumbUrl, blob) => {
+  const handleSaveReel = (reelState, videoB64, thumbUrl) => {
     if (!reelPost || reelSemana === null) return;
     setStrategy(prev => ({
       ...prev,
       semanas: prev.semanas.map(s => s.numero === reelSemana ? {
         ...s,
         posts: s.posts.map(p => p.id === reelPost.id ? {
-          ...p, reelState, reelThumb: thumbUrl, reelBlobUrl: blobUrl,
+          ...p, reelState, reelThumb: thumbUrl, reelVideoB64: videoB64,
         } : p),
       } : s),
     }));
@@ -2222,12 +2389,12 @@ export default function App() {
             count++;
           });
         }
-        // Reel webm (stored as blob url — fetch it back)
-        if (p.reelBlobUrl) {
+        // Reel webm stored as base64
+        if (p.reelVideoB64) {
           try {
             const reelName = ("S" + s.numero + "_" + p.red + "_reel.webm")
               .replace(/[/\\:*?"<>|\s]/g, "_");
-            folder.file(reelName, fetch(p.reelBlobUrl).then(r => r.blob()));
+            folder.file(reelName, dataUrlToBlob(p.reelVideoB64));
             count++;
           } catch {}
         }
@@ -2789,7 +2956,7 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
           }}>{copyFlash ? "✓ Link copiado" : "🔗 Compartir"}</button>
 
           {(() => {
-            const n = strategy?.semanas?.reduce((a, s) => a + (s.posts?.filter(p => p.designPngs?.length || p.reelBlobUrl).length || 0), 0) || 0;
+            const n = strategy?.semanas?.reduce((a, s) => a + (s.posts?.filter(p => p.designPngs?.length || p.reelVideoB64).length || 0), 0) || 0;
             return n > 0 ? (
               <button onClick={handleExportZip} title={`${n} pieza${n > 1 ? "s" : ""} guardada${n > 1 ? "s" : ""}`} style={{ background: C.teal, border: "none", borderRadius: 8, color: C.text, fontSize: 12, padding: "8px 14px", cursor: "pointer", fontFamily: "Georgia,serif", display: "flex", alignItems: "center", gap: 5 }}>
                 📦 ZIP ({n})
@@ -2940,6 +3107,7 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
           post={reelPost}
           onClose={() => setReelPost(null)}
           brandForm={form}
+          strategy={strategy}
           onSaveReel={handleSaveReel}
         />
       )}
