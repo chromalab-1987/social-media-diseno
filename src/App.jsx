@@ -244,527 +244,451 @@ function PostCard({ post, semanaNum, onEdit, onRegenerate, regeneratingId, onDes
 
 /* ─── DESIGN EDITOR ──────────────────────────────────────────────── */
 const DESIGN_FORMATS = {
-  instagram: { w: 1080, h: 1080, label: "Instagram",     icon: "▣" },
-  linkedin:  { w: 1200, h: 628,  label: "LinkedIn",      icon: "▬" },
-  post:      { w: 1080, h: 1350, label: "Post 4:5",      icon: "▩" },
-  story:     { w: 1080, h: 1920, label: "Story / Banner",icon: "▮" },
+  instagram: { w: 1080, h: 1080, label: "Instagram",      icon: "▣" },
+  linkedin:  { w: 1200, h: 628,  label: "LinkedIn",       icon: "▬" },
+  post:      { w: 1080, h: 1350, label: "Post 4:5",       icon: "▩" },
+  story:     { w: 1080, h: 1920, label: "Story / Banner", icon: "▮" },
 };
-
 const DESIGN_TEMPLATES = {
-  dark:      { label: "Dark",      bg: "#0C0C0F",  text: "#F2EDE4", accent: "#7B35D4", gradient: false },
-  light:     { label: "Light",     bg: "#F8F6F2",  text: "#111111", accent: "#7B35D4", gradient: false },
-  gradient:  { label: "Gradient",  bg: "#1A0A2E",  text: "#F2EDE4", accent: "#9F5FF0", gradient: true  },
-  editorial: { label: "Editorial", bg: "#F4EFE6",  text: "#2C1810", accent: "#E63946", gradient: false },
+  dark:      { label: "Dark",      bg: "#0C0C0F", text: "#F2EDE4", accent: "#7B35D4", gradient: false },
+  light:     { label: "Light",     bg: "#F8F6F2", text: "#111111", accent: "#7B35D4", gradient: false },
+  gradient:  { label: "Gradient",  bg: "#1A0A2E", text: "#F2EDE4", accent: "#9F5FF0", gradient: true  },
+  editorial: { label: "Editorial", bg: "#F4EFE6", text: "#2C1810", accent: "#E63946", gradient: false },
 };
+const FONT_OPTIONS = [
+  { label: "Georgia",   value: "Georgia, serif" },
+  { label: "Arial",     value: "Arial, sans-serif" },
+  { label: "Helvetica", value: "'Helvetica Neue', Helvetica, sans-serif" },
+  { label: "Times",     value: "'Times New Roman', Times, serif" },
+  { label: "Verdana",   value: "Verdana, Geneva, sans-serif" },
+  { label: "Impact",    value: "Impact, Charcoal, fantasy" },
+  { label: "Courier",   value: "'Courier New', Courier, monospace" },
+  { label: "Trebuchet", value: "'Trebuchet MS', Helvetica, sans-serif" },
+];
 
-// Canvas text wrapping helper
-function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-  const words = text.split(" ");
-  let line = "";
-  const lines = [];
-  for (const word of words) {
-    const test = line ? line + " " + word : word;
-    if (ctx.measureText(test).width > maxWidth && line) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = test;
-    }
-  }
-  if (line) lines.push(line);
-  lines.forEach((l, i) => ctx.fillText(l, x, y + i * lineHeight));
-  return lines.length;
+/* ColorInput: color picker + editable hex field */
+function ColorInput({ value, onChange }) {
+  const [hex, setHex] = useState(value);
+  useEffect(() => setHex(value), [value]);
+  const safe = /^#[0-9A-Fa-f]{6}$/.test(hex) ? hex : "#000000";
+  const onHex = (v) => { setHex(v); if (/^#[0-9A-Fa-f]{6}$/.test(v)) onChange(v); };
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 10 }}>
+      <input type="color" value={safe}
+        onChange={e => { onChange(e.target.value); setHex(e.target.value); }}
+        style={{ width: 30, height: 26, border: "none", borderRadius: 4, cursor: "pointer", flexShrink: 0, padding: 1 }} />
+      <input type="text" value={hex} onChange={e => onHex(e.target.value)} maxLength={7} placeholder="#000000"
+        style={{ flex: 1, background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 5, color: C.text, fontSize: 11, padding: "4px 8px", fontFamily: "monospace", outline: "none", boxSizing: "border-box" }} />
+    </div>
+  );
 }
 
-function drawRoundRect(ctx, x, y, w, h, r) {
+function drawRR(ctx, x, y, w, h, r) {
   ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.arcTo(x + w, y, x + w, y + r, r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-  ctx.lineTo(x + r, y + h);
-  ctx.arcTo(x, y + h, x, y + h - r, r);
-  ctx.lineTo(x, y + r);
-  ctx.arcTo(x, y, x + r, y, r);
+  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r); ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h); ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r); ctx.arcTo(x, y, x + r, y, r);
   ctx.closePath();
 }
+function canvasWrap(ctx, text, maxW) {
+  const words = text.split(" "), lines = []; let line = "";
+  for (const w of words) {
+    const test = line ? line + " " + w : w;
+    if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = w; } else line = test;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
 
-function DesignEditor({ post, onClose }) {
+function DesignEditor({ post, onClose, initialLogo }) {
   const [format,   setFormat]   = useState("instagram");
   const [template, setTemplate] = useState("dark");
   const [copy,     setCopy]     = useState(post.copy     || "");
   const [cta,      setCta]      = useState(post.cta      || "");
   const [hashtags, setHashtags] = useState(post.hashtags || "");
-  const [fontSize, setFontSize] = useState(42);
-  const [align,    setAlign]    = useState("left");
-  const [bgColor,  setBgColor]  = useState(DESIGN_TEMPLATES.dark.bg);
-  const [txtColor, setTxtColor] = useState(DESIGN_TEMPLATES.dark.text);
-  const [accColor, setAccColor] = useState(DESIGN_TEMPLATES.dark.accent);
+  const [fontFamily, setFontFamily] = useState("Georgia, serif");
+  const [fontSize,   setFontSize]   = useState(42);
+  const [align,      setAlign]      = useState("left");
+  const [bgColor,   setBgColor]   = useState(DESIGN_TEMPLATES.dark.bg);
+  const [accColor,  setAccColor]  = useState(DESIGN_TEMPLATES.dark.accent);
+  const [copyColor, setCopyColor] = useState(DESIGN_TEMPLATES.dark.text);
+  const [ctaColor,  setCtaColor]  = useState("#CCBBFF");
+  const [hashColor, setHashColor] = useState("#9F5FF0");
+  const [bgImage, setBgImage]  = useState(null);
+  const [bgFit,   setBgFit]    = useState("cover");
+  const [showBadges, setShowBadges] = useState(true);
+  const [textXF, setTextXF] = useState(0.074);
+  const [textYF, setTextYF] = useState(0.34);
+  const [logo, setLogo] = useState(
+    initialLogo ? { src: initialLogo, xF: 0.06, yF: 0.05, wF: 0.22, ar: 1 } : null
+  );
   const [downloading, setDownloading] = useState(false);
+  const [dragging,    setDragging]    = useState("");
+  const textDrag   = useRef(null);
+  const logoDrag   = useRef(null);
+  const logoResize = useRef(null);
+  const previewRef = useRef(null);
+  const bgFileRef  = useRef(null);
+  const logoFileRef = useRef(null);
 
   const fmt = DESIGN_FORMATS[format];
   const tpl = DESIGN_TEMPLATES[template];
 
-  // Sync template → colors
   useEffect(() => {
-    setBgColor(tpl.bg);
-    setTxtColor(tpl.text);
+    setBgColor(tpl.bg === "gradient" ? "#1A0A2E" : tpl.bg);
     setAccColor(tpl.accent);
+    setCopyColor(tpl.text);
   }, [template]);
 
-  // Scale preview to fit panel
-  const PREVIEW_MAX_W = 400;
-  const PREVIEW_MAX_H = 440;
-  const scale = Math.min(PREVIEW_MAX_W / fmt.w, PREVIEW_MAX_H / fmt.h);
+  const PREV_W = 420, PREV_H = 460;
+  const scale = Math.min(PREV_W / fmt.w, PREV_H / fmt.h);
   const pw = Math.round(fmt.w * scale);
   const ph = Math.round(fmt.h * scale);
-
-  // Scaled sizes for preview
-  const pFontSize    = Math.round(fontSize * scale);
-  const pPad         = Math.round(60 * scale);
-  const pLineHeight  = Math.round(fontSize * 1.55 * scale);
-  const pAccentSize  = Math.round(18 * scale);
-  const pCtaSize     = Math.round(fontSize * 0.42 * scale);
-  const pHashSize    = Math.round(fontSize * 0.36 * scale);
-  const pBadgeH      = Math.round(32 * scale);
-  const pBadgePad    = Math.round(14 * scale);
-
-  // CSS for preview background
-  const previewBg = tpl.gradient
-    ? `linear-gradient(135deg, ${bgColor} 0%, #7B35D4 60%, #2A9D8F 100%)`
+  const pFont  = Math.round(fontSize * scale);
+  const pPad   = Math.round(60 * scale);
+  const pLineH = Math.round(fontSize * 1.6 * scale);
+  const pBadgeH = Math.round(32 * scale);
+  const previewBg = bgImage ? "transparent"
+    : tpl.gradient ? `linear-gradient(135deg, ${bgColor} 0%, #7B35D4 60%, #2A9D8F 100%)`
     : bgColor;
+  const approxCharsPerLine = Math.max(1, Math.floor((pw - textXF * pw - pPad) / (pFont * 0.55)));
+  const approxLines = Math.max(1, Math.ceil(copy.length / approxCharsPerLine));
+  const pTextH    = approxLines * pLineH;
+  const textTopPx  = textYF * ph;
+  const accentTopPx = textTopPx + pTextH + Math.round(22 * scale);
+  const ctaTopPx    = accentTopPx + Math.round(20 * scale);
 
-  // Compute text starting Y for preview (centered vertically ~38%)
-  const estimatedLines = Math.max(1, Math.ceil((copy.length * pFontSize * 0.6) / (pw - pPad * 2)));
-  const textBlockH = estimatedLines * pLineHeight;
-  const textStartY = Math.max(pPad + pBadgeH + 20, Math.round((ph - textBlockH) * 0.35));
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e) => {
+      if (dragging === "text" && textDrag.current) {
+        const dx = e.clientX - textDrag.current.startX;
+        const dy = e.clientY - textDrag.current.startY;
+        setTextXF(Math.max(0, Math.min(0.8,  textDrag.current.startXF + dx / pw)));
+        setTextYF(Math.max(0, Math.min(0.85, textDrag.current.startYF + dy / ph)));
+      }
+      if (dragging === "logo" && logoDrag.current) {
+        const dx = e.clientX - logoDrag.current.startX;
+        const dy = e.clientY - logoDrag.current.startY;
+        setLogo(l => l ? { ...l,
+          xF: Math.max(0, Math.min(0.92, logoDrag.current.startXF + dx / pw)),
+          yF: Math.max(0, Math.min(0.92, logoDrag.current.startYF + dy / ph)),
+        } : l);
+      }
+      if (dragging === "resize" && logoResize.current) {
+        const dx = e.clientX - logoResize.current.startX;
+        setLogo(l => l ? { ...l, wF: Math.max(0.04, Math.min(0.9, logoResize.current.startWF + dx / pw)) } : l);
+      }
+    };
+    const onUp = () => {
+      textDrag.current = null; logoDrag.current = null; logoResize.current = null;
+      setDragging("");
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, [dragging, pw, ph]);
 
-  /* ── Canvas PNG export ── */
-  const buildCanvas = useCallback(() => {
+  const handleLogoFile = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const src = ev.target.result;
+      const img = new Image();
+      img.onload = () => setLogo({ src, xF: 0.06, yF: 0.05, wF: 0.22, ar: img.height / img.width });
+      img.src = src;
+    };
+    reader.readAsDataURL(file);
+  };
+  const handleBgFile = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => setBgImage(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const buildCanvas = async () => {
     const canvas = document.createElement("canvas");
-    canvas.width  = fmt.w;
-    canvas.height = fmt.h;
+    canvas.width = fmt.w; canvas.height = fmt.h;
     const ctx = canvas.getContext("2d");
-
-    const pad        = 80;
-    const maxW       = fmt.w - pad * 2;
-    const lineH      = fontSize * 1.55;
-    const netColor   = NET_COLOR[post.red] || accColor;
-
-    // Background
-    if (tpl.gradient) {
-      const grad = ctx.createLinearGradient(0, 0, fmt.w, fmt.h);
-      grad.addColorStop(0, bgColor);
-      grad.addColorStop(0.6, "#7B35D4");
-      grad.addColorStop(1,   "#2A9D8F");
-      ctx.fillStyle = grad;
-    } else {
-      ctx.fillStyle = bgColor;
-    }
-    ctx.fillRect(0, 0, fmt.w, fmt.h);
-
-    // Top network badge
-    const badgeH   = 44;
-    const badgeW   = 200;
-    ctx.fillStyle = `${netColor}28`;
-    drawRoundRect(ctx, pad, pad, badgeW, badgeH, badgeH / 2);
-    ctx.fill();
-    ctx.strokeStyle = `${netColor}55`;
-    ctx.lineWidth = 1;
-    drawRoundRect(ctx, pad, pad, badgeW, badgeH, badgeH / 2);
-    ctx.stroke();
-    ctx.fillStyle  = netColor;
-    ctx.font       = `bold ${Math.round(fontSize * 0.38)}px Georgia, serif`;
-    ctx.textAlign  = "left";
-    ctx.textBaseline = "middle";
-    ctx.fillText(post.red, pad + 18, pad + badgeH / 2);
-
-    // Pilar badge (right)
-    const pilarText = post.pilar || "";
-    if (pilarText) {
-      ctx.font = `${Math.round(fontSize * 0.32)}px Georgia, serif`;
-      const pilarW = ctx.measureText(pilarText).width + 28;
-      ctx.fillStyle = `${accColor}22`;
-      drawRoundRect(ctx, fmt.w - pad - pilarW, pad, pilarW, badgeH, badgeH / 2);
-      ctx.fill();
-      ctx.fillStyle = accColor;
-      ctx.fillText(pilarText, fmt.w - pad - pilarW + 14, pad + badgeH / 2);
-    }
-
-    // Main copy text
-    ctx.font          = `${fontSize}px Georgia, serif`;
-    ctx.textAlign     = align === "center" ? "center" : align === "right" ? "right" : "left";
-    ctx.textBaseline  = "top";
-    ctx.fillStyle     = txtColor;
-
-    const textX = align === "center" ? fmt.w / 2 : align === "right" ? fmt.w - pad : pad;
-
-    // Measure lines for vertical centering
-    const words = copy.split(" ");
-    const tempLines = [];
-    let tempLine = "";
-    for (const word of words) {
-      const test = tempLine ? tempLine + " " + word : word;
-      if (ctx.measureText(test).width > maxW && tempLine) {
-        tempLines.push(tempLine); tempLine = word;
-      } else { tempLine = test; }
-    }
-    if (tempLine) tempLines.push(tempLine);
-
-    const totalTextH = tempLines.length * lineH;
-    let textY = Math.max(pad + badgeH + 40, (fmt.h - totalTextH) * 0.38);
-
-    tempLines.forEach((line, i) => {
-      ctx.fillText(line, textX, textY + i * lineH);
+    const loadImg = (src) => new Promise((res, rej) => {
+      const img = new Image(); img.onload = () => res(img); img.onerror = rej;
+      img.crossOrigin = "anonymous"; img.src = src;
     });
+    if (bgImage) {
+      try {
+        const img = await loadImg(bgImage);
+        if (bgFit === "cover") {
+          const s = Math.max(fmt.w / img.width, fmt.h / img.height);
+          const sw = img.width * s, sh = img.height * s;
+          ctx.drawImage(img, (fmt.w - sw) / 2, (fmt.h - sh) / 2, sw, sh);
+        } else { ctx.drawImage(img, 0, 0, fmt.w, fmt.h); }
+      } catch { ctx.fillStyle = bgColor; ctx.fillRect(0, 0, fmt.w, fmt.h); }
+    } else if (tpl.gradient) {
+      const grad = ctx.createLinearGradient(0, 0, fmt.w, fmt.h);
+      grad.addColorStop(0, bgColor); grad.addColorStop(0.6, "#7B35D4"); grad.addColorStop(1, "#2A9D8F");
+      ctx.fillStyle = grad; ctx.fillRect(0, 0, fmt.w, fmt.h);
+    } else { ctx.fillStyle = bgColor; ctx.fillRect(0, 0, fmt.w, fmt.h); }
 
-    // Accent line
-    const lineAfterText = textY + totalTextH + 50;
+    const pad = 80, lineH = fontSize * 1.6;
+    const netColor = NET_COLOR[post.red] || accColor;
+
+    if (showBadges) {
+      const bH = 44;
+      ctx.fillStyle = `${netColor}28`; drawRR(ctx, pad, pad, 200, bH, bH / 2); ctx.fill();
+      ctx.strokeStyle = `${netColor}55`; ctx.lineWidth = 1; drawRR(ctx, pad, pad, 200, bH, bH / 2); ctx.stroke();
+      ctx.fillStyle = netColor;
+      ctx.font = `bold ${Math.round(fontSize * 0.38)}px ${fontFamily}`;
+      ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.fillText(post.red, pad + 18, pad + bH / 2);
+      if (post.pilar) {
+        ctx.font = `${Math.round(fontSize * 0.32)}px ${fontFamily}`;
+        const pilarW = ctx.measureText(post.pilar).width + 28;
+        ctx.fillStyle = `${accColor}22`; drawRR(ctx, fmt.w - pad - pilarW, pad, pilarW, bH, bH / 2); ctx.fill();
+        ctx.fillStyle = accColor; ctx.fillText(post.pilar, fmt.w - pad - pilarW + 14, pad + bH / 2);
+      }
+    }
+
+    const textCanvasX = textXF * fmt.w, textCanvasY = textYF * fmt.h;
+    const maxW = fmt.w - textCanvasX - pad;
+    ctx.font = `${fontSize}px ${fontFamily}`; ctx.textBaseline = "top"; ctx.fillStyle = copyColor;
+    const tAlign = align === "center" ? "center" : align === "right" ? "right" : "left";
+    ctx.textAlign = tAlign;
+    const lines = canvasWrap(ctx, copy, maxW);
+    const refX = align === "center" ? textCanvasX + maxW / 2 : align === "right" ? textCanvasX + maxW : textCanvasX;
+    lines.forEach((ln, i) => ctx.fillText(ln, refX, textCanvasY + i * lineH));
+    const totalTextH = lines.length * lineH;
+    const accentY = textCanvasY + totalTextH + 36;
     ctx.fillStyle = accColor;
-    ctx.fillRect(
-      align === "center" ? fmt.w / 2 - 60 : align === "right" ? fmt.w - pad - 80 : pad,
-      lineAfterText,
-      80, 4
-    );
-
-    // CTA
+    const accentX = align === "center" ? refX - 50 : align === "right" ? refX - 80 : refX;
+    ctx.fillRect(accentX, accentY, 80, 4);
     if (cta) {
-      ctx.font      = `${Math.round(fontSize * 0.44)}px Georgia, serif`;
-      ctx.fillStyle = `${txtColor}CC`;
-      ctx.textAlign = align === "center" ? "center" : align === "right" ? "right" : "left";
-      ctx.fillText(cta, textX, lineAfterText + 32);
+      ctx.font = `${Math.round(fontSize * 0.42)}px ${fontFamily}`; ctx.fillStyle = ctaColor;
+      ctx.textAlign = tAlign; ctx.fillText(cta, refX, accentY + 32);
     }
-
-    // Hashtags (bottom)
     if (hashtags) {
-      ctx.font      = `${Math.round(fontSize * 0.36)}px Georgia, serif`;
-      ctx.fillStyle = `${accColor}BB`;
-      ctx.textAlign = "left";
-      ctx.textBaseline = "bottom";
-      const hDisplay = hashtags.length > 80 ? hashtags.slice(0, 80) + "…" : hashtags;
-      ctx.fillText(hDisplay, pad, fmt.h - pad);
+      ctx.font = `${Math.round(fontSize * 0.34)}px ${fontFamily}`; ctx.fillStyle = hashColor;
+      ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+      ctx.fillText(hashtags.length > 90 ? hashtags.slice(0, 90) + "\u2026" : hashtags, pad, fmt.h - pad);
     }
-
+    if (logo) {
+      try {
+        const logoImg = await loadImg(logo.src);
+        const lw = logo.wF * fmt.w, lh = lw * logo.ar;
+        ctx.drawImage(logoImg, logo.xF * fmt.w, logo.yF * fmt.h, lw, lh);
+      } catch {}
+    }
     return canvas;
-  }, [fmt, template, bgColor, txtColor, accColor, copy, cta, hashtags, fontSize, align, post, tpl]);
+  };
 
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      // Small delay to show loading state
-      await new Promise(r => setTimeout(r, 60));
-      const canvas = buildCanvas();
+      const canvas = await buildCanvas();
       const link = document.createElement("a");
       link.download = `${post.red}-${format}-${Date.now()}.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
-    } finally {
-      setDownloading(false);
-    }
+      link.href = canvas.toDataURL("image/png"); link.click();
+    } catch (e) { console.error("Export error", e); }
+    finally { setDownloading(false); }
   };
 
-  const inp = {
-    width: "100%", background: C.surf3, border: `1px solid ${C.border}`,
-    borderRadius: 7, color: C.text, fontSize: 12, padding: "9px 11px",
-    fontFamily: "Georgia,serif", boxSizing: "border-box", outline: "none", marginBottom: 10,
-    resize: "vertical",
-  };
-  const lbl = {
-    display: "block", fontSize: 9, letterSpacing: "0.13em", textTransform: "uppercase",
-    color: C.accentLt, marginBottom: 5, fontFamily: "Georgia,serif",
-  };
-  const fmtBtnS = (active) => ({
-    flex: 1, padding: "7px 4px", borderRadius: 6, border: "none", cursor: "pointer",
-    background: active ? C.accent : C.surf3,
-    color: active ? C.text : C.muted,
-    fontSize: 10, fontFamily: "Georgia,serif", transition: "all .15s",
-    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-  });
-  const tplBtnS = (active) => ({
-    flex: 1, padding: "7px 4px", borderRadius: 6, border: `1px solid ${active ? C.accent : C.border}`,
-    cursor: "pointer", background: active ? `${C.accent}22` : C.surf2,
-    color: active ? C.accentLt : C.muted,
-    fontSize: 10, fontFamily: "Georgia,serif", transition: "all .15s",
-  });
-  const alignBtnS = (active) => ({
-    width: 32, height: 28, borderRadius: 5, border: `1px solid ${active ? C.accent : C.border}`,
-    background: active ? `${C.accent}22` : "transparent",
-    color: active ? C.accentLt : C.muted,
-    cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center",
-  });
+  const inp = { width: "100%", background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 7, color: C.text, fontSize: 12, padding: "8px 10px", fontFamily: "Georgia,serif", boxSizing: "border-box", outline: "none", marginBottom: 8, resize: "vertical" };
+  const lbl = { display: "block", fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", color: C.accentLt, marginBottom: 5, fontFamily: "Georgia,serif" };
+  const sec = { borderTop: `1px solid ${C.border}`, paddingTop: 12, marginTop: 12 };
+  const chipBtnS = (active) => ({ flex: 1, padding: "6px 3px", borderRadius: 5, border: `1px solid ${active ? C.accent : C.border}`, background: active ? `${C.accent}22` : "transparent", color: active ? C.accentLt : C.muted, fontSize: 10, cursor: "pointer", fontFamily: "Georgia,serif", transition: "all .15s", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" });
+  const uploadBtnStyle = { display: "inline-flex", alignItems: "center", gap: 6, background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 7, color: C.text, fontSize: 11, padding: "7px 12px", cursor: "pointer", fontFamily: "Georgia,serif" };
+  const alignBtnS = (active) => ({ flex: 1, height: 28, borderRadius: 5, border: `1px solid ${active ? C.accent : C.border}`, background: active ? `${C.accent}22` : "transparent", color: active ? C.accentLt : C.muted, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" });
+  const isDragging = dragging !== "";
 
   return (
     <>
-      {/* Backdrop */}
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 60 }} />
-
-      {/* Panel */}
-      <div style={{
-        position: "fixed", right: 0, top: 0, bottom: 0,
-        width: 820, maxWidth: "98vw",
-        background: C.surface, borderLeft: `1px solid ${C.border}`,
-        zIndex: 61, display: "flex", flexDirection: "column",
-        animation: "slideIn .25s ease",
-      }}>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.75)", zIndex: 60 }} />
+      <div style={{ position: "fixed", right: 0, top: 0, bottom: 0, width: 900, maxWidth: "99vw", background: C.surface, borderLeft: `1px solid ${C.border}`, zIndex: 61, display: "flex", flexDirection: "column", animation: "slideIn .25s ease", cursor: isDragging ? "grabbing" : "default", userSelect: isDragging ? "none" : "auto" }}>
 
         {/* Header */}
-        <div style={{
-          padding: "18px 24px", borderBottom: `1px solid ${C.border}`,
-          display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0,
-        }}>
+        <div style={{ padding: "16px 22px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
           <div>
             <div style={{ fontSize: 15, color: C.text, fontFamily: "Georgia,serif" }}>🎨 Editor de pieza</div>
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>{post.red} · {post.tipo} · {post.pilar}</div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{post.red} · {post.tipo} · {post.pilar}</div>
           </div>
           <button onClick={onClose} style={{ background: "transparent", border: "none", color: C.muted, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
         </div>
 
-        {/* Body: sidebar + preview */}
         <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
-          {/* ── LEFT SIDEBAR ── */}
-          <div style={{
-            width: 230, flexShrink: 0, overflowY: "auto",
-            borderRight: `1px solid ${C.border}`,
-            padding: "18px 16px",
-          }}>
+          {/* ── SIDEBAR ── */}
+          <div style={{ width: 258, flexShrink: 0, overflowY: "auto", borderRight: `1px solid ${C.border}`, padding: "14px 14px 28px" }}>
 
-            {/* Plantilla */}
             <label style={lbl}>Plantilla</label>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, marginBottom: 16 }}>
-              {Object.entries(DESIGN_TEMPLATES).map(([key, t]) => (
-                <button key={key} style={tplBtnS(template === key)} onClick={() => setTemplate(key)}>
-                  {t.label}
-                </button>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginBottom: 4 }}>
+              {Object.entries(DESIGN_TEMPLATES).map(([k, t]) => (
+                <button key={k} style={chipBtnS(template === k)} onClick={() => setTemplate(k)}>{t.label}</button>
               ))}
             </div>
 
-            {/* Formato */}
-            <label style={lbl}>Formato</label>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, marginBottom: 16 }}>
-              {Object.entries(DESIGN_FORMATS).map(([key, f]) => (
-                <button key={key} style={fmtBtnS(format === key)} onClick={() => setFormat(key)}>
-                  {f.icon} {f.label}
-                </button>
-              ))}
+            <div style={sec}>
+              <label style={lbl}>Formato</label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                {Object.entries(DESIGN_FORMATS).map(([k, f]) => (
+                  <button key={k} style={chipBtnS(format === k)} onClick={() => setFormat(k)}>{f.icon} {f.label}</button>
+                ))}
+              </div>
             </div>
 
-            {/* Texto principal */}
-            <label style={lbl}>Texto principal</label>
-            <textarea
-              value={copy}
-              onChange={e => setCopy(e.target.value)}
-              rows={5}
-              style={{ ...inp }}
-            />
-
-            {/* Font size */}
-            <label style={lbl}>Tamaño</label>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <input
-                type="range" min={20} max={80} value={fontSize}
-                onChange={e => setFontSize(parseInt(e.target.value))}
-                style={{ flex: 1, accentColor: C.accent }}
-              />
-              <span style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif", minWidth: 24 }}>{fontSize}</span>
+            {/* Fondo */}
+            <div style={sec}>
+              <label style={lbl}>Fondo</label>
+              <input ref={bgFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => handleBgFile(e.target.files?.[0])} />
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                <button style={{ ...uploadBtnStyle, flex: 1, justifyContent: "center" }} onClick={() => bgFileRef.current?.click()}>🖼 Subir imagen</button>
+                {bgImage && <button onClick={() => setBgImage(null)} style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 7, color: C.muted, fontSize: 11, padding: "7px 10px", cursor: "pointer" }}>✕</button>}
+              </div>
+              {bgImage && (
+                <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+                  {["cover","contain"].map(f => <button key={f} style={chipBtnS(bgFit === f)} onClick={() => setBgFit(f)}>{f}</button>)}
+                </div>
+              )}
+              <label style={{ ...lbl, marginTop: 4 }}>Color de fondo</label>
+              <ColorInput value={bgColor} onChange={setBgColor} />
+              <label style={lbl}>Color de acento</label>
+              <ColorInput value={accColor} onChange={setAccColor} />
             </div>
 
-            {/* Alignment */}
-            <label style={lbl}>Alineación</label>
-            <div style={{ display: "flex", gap: 5, marginBottom: 14 }}>
-              {[["left","←"],["center","↔"],["right","→"]].map(([val, icon]) => (
-                <button key={val} style={alignBtnS(align === val)} onClick={() => setAlign(val)}>{icon}</button>
-              ))}
+            {/* Texto */}
+            <div style={sec}>
+              <label style={lbl}>Texto principal</label>
+              <textarea value={copy} onChange={e => setCopy(e.target.value)} rows={4} style={inp} />
+              <label style={lbl}>Fuente</label>
+              <select value={fontFamily} onChange={e => setFontFamily(e.target.value)} style={{ ...inp, appearance: "none", cursor: "pointer", resize: "none" }}>
+                {FONT_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+              </select>
+              <label style={lbl}>Tamaño — {fontSize}px</label>
+              <input type="range" min={16} max={90} value={fontSize} onChange={e => setFontSize(parseInt(e.target.value))} style={{ width: "100%", accentColor: C.accent, marginBottom: 10 }} />
+              <label style={lbl}>Alineación</label>
+              <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+                {[["left","←"],["center","↔"],["right","→"]].map(([v,icon]) => (
+                  <button key={v} style={alignBtnS(align === v)} onClick={() => setAlign(v)}>{icon}</button>
+                ))}
+              </div>
+              <label style={lbl}>Color del texto</label>
+              <ColorInput value={copyColor} onChange={setCopyColor} />
             </div>
 
             {/* CTA */}
-            <label style={lbl}>CTA</label>
-            <input
-              value={cta}
-              onChange={e => setCta(e.target.value)}
-              style={{ ...inp, resize: "none" }}
-            />
-
-            {/* Hashtags */}
-            <label style={lbl}>Hashtags</label>
-            <input
-              value={hashtags}
-              onChange={e => setHashtags(e.target.value)}
-              style={{ ...inp, resize: "none" }}
-            />
-
-            {/* Colors */}
-            <label style={lbl}>Color de fondo</label>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-              <input
-                type="color" value={bgColor} onChange={e => setBgColor(e.target.value)}
-                style={{ width: 36, height: 28, border: "none", borderRadius: 5, cursor: "pointer", background: "none" }}
-              />
-              <span style={{ fontSize: 11, color: C.muted, fontFamily: "monospace" }}>{bgColor}</span>
+            <div style={sec}>
+              <label style={lbl}>CTA</label>
+              <input value={cta} onChange={e => setCta(e.target.value)} style={{ ...inp, resize: "none" }} />
+              <label style={lbl}>Color CTA</label>
+              <ColorInput value={ctaColor} onChange={setCtaColor} />
             </div>
 
-            <label style={lbl}>Color de acento</label>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-              <input
-                type="color" value={accColor} onChange={e => setAccColor(e.target.value)}
-                style={{ width: 36, height: 28, border: "none", borderRadius: 5, cursor: "pointer", background: "none" }}
-              />
-              <span style={{ fontSize: 11, color: C.muted, fontFamily: "monospace" }}>{accColor}</span>
+            {/* Hashtags */}
+            <div style={sec}>
+              <label style={lbl}>Hashtags</label>
+              <input value={hashtags} onChange={e => setHashtags(e.target.value)} style={{ ...inp, resize: "none" }} />
+              <label style={lbl}>Color hashtags</label>
+              <ColorInput value={hashColor} onChange={setHashColor} />
+            </div>
+
+            {/* Etiquetas toggle */}
+            <div style={{ ...sec, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ fontSize: 11, color: C.text, fontFamily: "Georgia,serif" }}>Etiquetas</div>
+                <div style={{ fontSize: 10, color: C.muted }}>Mostrar red / pilar</div>
+              </div>
+              <Toggle on={showBadges} onToggle={() => setShowBadges(v => !v)} />
+            </div>
+
+            {/* Logo */}
+            <div style={sec}>
+              <label style={lbl}>Logo</label>
+              <input ref={logoFileRef} type="file" accept="image/png,image/svg+xml,image/jpeg,image/webp" style={{ display: "none" }} onChange={e => handleLogoFile(e.target.files?.[0])} />
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                <button style={{ ...uploadBtnStyle, flex: 1, justifyContent: "center" }} onClick={() => logoFileRef.current?.click()}>📁 {logo ? "Cambiar logo" : "Subir logo"}</button>
+                {logo && <button onClick={() => setLogo(null)} style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 7, color: C.muted, fontSize: 11, padding: "7px 10px", cursor: "pointer" }}>✕</button>}
+              </div>
+              {logo && (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <img src={logo.src} style={{ height: 28, maxWidth: 80, objectFit: "contain", borderRadius: 4, background: "#fff1", border: `1px solid ${C.border}` }} alt="logo" />
+                    <span style={{ fontSize: 10, color: C.muted, fontFamily: "Georgia,serif" }}>Arrastrá en la vista previa para mover · esquina para escalar</span>
+                  </div>
+                  <label style={lbl}>Tamaño — {Math.round(logo.wF * 100)}%</label>
+                  <input type="range" min={4} max={80} value={Math.round(logo.wF * 100)} onChange={e => setLogo(l => l ? { ...l, wF: parseInt(e.target.value) / 100 } : l)} style={{ width: "100%", accentColor: C.accent }} />
+                </>
+              )}
             </div>
           </div>
 
-          {/* ── RIGHT: PREVIEW ── */}
-          <div style={{
-            flex: 1, display: "flex", flexDirection: "column",
-            alignItems: "center", justifyContent: "center",
-            background: C.bg, overflow: "hidden", padding: "24px",
-          }}>
-            <div style={{ fontSize: 10, color: C.muted, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 14, fontFamily: "Georgia,serif" }}>
-              Vista previa — {fmt.label} ({fmt.w}×{fmt.h}px)
+          {/* ── PREVIEW ── */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: C.bg, overflow: "hidden", padding: "20px" }}>
+            <div style={{ fontSize: 10, color: C.muted, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 12, fontFamily: "Georgia,serif" }}>
+              Vista previa — {fmt.label} · {fmt.w}×{fmt.h}px
+              {isDragging && <span style={{ color: C.accent, marginLeft: 8 }}>arrastrando…</span>}
             </div>
 
-            {/* Preview box */}
-            <div style={{
-              width: pw, height: ph, position: "relative", overflow: "hidden",
-              background: previewBg, borderRadius: 8,
-              boxShadow: "0 8px 40px rgba(0,0,0,.6)",
-              flexShrink: 0,
-            }}>
-              {/* Network badge */}
-              <div style={{
-                position: "absolute", top: pPad, left: pPad,
-                background: `${NET_COLOR[post.red] || accColor}28`,
-                border: `1px solid ${NET_COLOR[post.red] || accColor}55`,
-                borderRadius: pBadgeH / 2, height: pBadgeH,
-                display: "flex", alignItems: "center",
-                padding: `0 ${pBadgePad}px`,
-                fontSize: pAccentSize * 0.9,
-                color: NET_COLOR[post.red] || accColor,
-                fontFamily: "Georgia,serif", fontWeight: "bold",
-                whiteSpace: "nowrap",
-              }}>
-                {post.red}
-              </div>
+            <div ref={previewRef} style={{ width: pw, height: ph, position: "relative", overflow: "hidden", background: previewBg, borderRadius: 8, boxShadow: "0 8px 40px rgba(0,0,0,.7)", flexShrink: 0 }}>
 
-              {/* Pilar badge */}
-              {post.pilar && (
-                <div style={{
-                  position: "absolute", top: pPad, right: pPad,
-                  background: `${accColor}22`,
-                  border: `1px solid ${accColor}55`,
-                  borderRadius: pBadgeH / 2, height: pBadgeH,
-                  display: "flex", alignItems: "center",
-                  padding: `0 ${pBadgePad}px`,
-                  fontSize: Math.round(pAccentSize * 0.75),
-                  color: accColor,
-                  fontFamily: "Georgia,serif",
-                  whiteSpace: "nowrap",
-                }}>
-                  {post.pilar}
-                </div>
+              {bgImage && (
+                <div style={{ position: "absolute", inset: 0, backgroundImage: `url(${bgImage})`, backgroundSize: bgFit, backgroundPosition: "center", backgroundRepeat: "no-repeat" }} />
               )}
+
+              {showBadges && (
+                <>
+                  <div style={{ position: "absolute", top: pPad, left: pPad, background: `${NET_COLOR[post.red] || accColor}28`, border: `1px solid ${NET_COLOR[post.red] || accColor}55`, borderRadius: pBadgeH / 2, height: pBadgeH, display: "flex", alignItems: "center", padding: `0 ${Math.round(12 * scale)}px`, fontSize: Math.round(13 * scale), color: NET_COLOR[post.red] || accColor, fontFamily: fontFamily, fontWeight: "bold", whiteSpace: "nowrap", pointerEvents: "none" }}>{post.red}</div>
+                  {post.pilar && <div style={{ position: "absolute", top: pPad, right: pPad, background: `${accColor}22`, border: `1px solid ${accColor}55`, borderRadius: pBadgeH / 2, height: pBadgeH, display: "flex", alignItems: "center", padding: `0 ${Math.round(10 * scale)}px`, fontSize: Math.round(11 * scale), color: accColor, fontFamily: fontFamily, whiteSpace: "nowrap", pointerEvents: "none" }}>{post.pilar}</div>}
+                </>
+              )}
+
+              {/* Text drag handle */}
+              <div
+                onMouseDown={e => { e.preventDefault(); textDrag.current = { startX: e.clientX, startY: e.clientY, startXF: textXF, startYF: textYF }; setDragging("text"); }}
+                title="Arrastrá para mover el texto"
+                style={{ position: "absolute", left: textXF * pw, top: Math.max(0, textTopPx - 16), background: C.accent, borderRadius: "4px 4px 0 0", padding: "2px 8px 1px", fontSize: 9, color: "#fff", cursor: "grab", display: "flex", alignItems: "center", gap: 3, fontFamily: "Georgia,serif", whiteSpace: "nowrap", zIndex: 10 }}>
+                ⠿ mover texto
+              </div>
 
               {/* Copy text */}
-              <div style={{
-                position: "absolute",
-                top: textStartY,
-                left: pPad, right: pPad,
-                fontSize: pFontSize,
-                color: txtColor,
-                fontFamily: "Georgia,serif",
-                lineHeight: `${pLineHeight}px`,
-                textAlign: align,
-                wordBreak: "break-word",
-                transition: "all .15s",
-              }}>
-                {copy}
-              </div>
+              <div style={{ position: "absolute", left: textXF * pw, top: textTopPx, right: pPad, fontSize: pFont, color: copyColor, fontFamily: fontFamily, lineHeight: `${pLineH}px`, textAlign: align, wordBreak: "break-word", pointerEvents: "none", zIndex: 5 }}>{copy}</div>
 
               {/* Accent line */}
-              <div style={{
-                position: "absolute",
-                top: textStartY + textBlockH + Math.round(50 * scale),
-                left: align === "center" ? "50%" : align === "right" ? undefined : pPad,
-                right: align === "right" ? pPad : undefined,
-                transform: align === "center" ? "translateX(-50%)" : undefined,
-                width: Math.round(80 * scale), height: Math.round(4 * scale),
-                background: accColor, borderRadius: 2,
-              }} />
+              <div style={{ position: "absolute", top: accentTopPx, left: align === "center" ? "50%" : align === "right" ? undefined : textXF * pw, right: align === "right" ? pPad : undefined, transform: align === "center" ? "translateX(-50%)" : undefined, width: Math.round(60 * scale), height: Math.round(3 * scale), background: accColor, borderRadius: 2, pointerEvents: "none", zIndex: 5 }} />
 
               {/* CTA */}
-              {cta && (
-                <div style={{
-                  position: "absolute",
-                  top: textStartY + textBlockH + Math.round(50 * scale) + Math.round(28 * scale),
-                  left: pPad, right: pPad,
-                  fontSize: pCtaSize,
-                  color: `${txtColor}CC`,
-                  fontFamily: "Georgia,serif",
-                  textAlign: align,
-                }}>
-                  {cta}
-                </div>
-              )}
+              {cta && <div style={{ position: "absolute", top: ctaTopPx, left: textXF * pw, right: pPad, fontSize: Math.round(fontSize * 0.42 * scale), color: ctaColor, fontFamily: fontFamily, textAlign: align, pointerEvents: "none", zIndex: 5 }}>{cta}</div>}
 
               {/* Hashtags */}
-              {hashtags && (
-                <div style={{
-                  position: "absolute",
-                  bottom: pPad, left: pPad, right: pPad,
-                  fontSize: pHashSize,
-                  color: `${accColor}BB`,
-                  fontFamily: "Georgia,serif",
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                }}>
-                  {hashtags}
+              {hashtags && <div style={{ position: "absolute", bottom: pPad, left: pPad, right: pPad, fontSize: Math.round(fontSize * 0.34 * scale), color: hashColor, fontFamily: fontFamily, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", pointerEvents: "none", zIndex: 5 }}>{hashtags}</div>}
+
+              {/* Logo */}
+              {logo && (
+                <div
+                  onMouseDown={e => { e.preventDefault(); e.stopPropagation(); logoDrag.current = { startX: e.clientX, startY: e.clientY, startXF: logo.xF, startYF: logo.yF }; setDragging("logo"); }}
+                  style={{ position: "absolute", left: logo.xF * pw, top: logo.yF * ph, width: logo.wF * pw, cursor: dragging === "logo" ? "grabbing" : "grab", zIndex: 20 }}>
+                  <img src={logo.src} style={{ width: "100%", display: "block", pointerEvents: "none" }} alt="logo" />
+                  <div style={{ position: "absolute", inset: -1, border: `1px dashed ${C.accent}88`, borderRadius: 2, pointerEvents: "none" }} />
+                  <div
+                    onMouseDown={e => { e.preventDefault(); e.stopPropagation(); logoResize.current = { startX: e.clientX, startWF: logo.wF }; setDragging("resize"); }}
+                    style={{ position: "absolute", right: -5, bottom: -5, width: 12, height: 12, background: C.accent, borderRadius: 2, cursor: "nwse-resize", zIndex: 21 }} />
                 </div>
               )}
             </div>
 
-            {/* Dimensions label */}
-            <div style={{ fontSize: 10, color: C.muted, marginTop: 12, fontFamily: "Georgia,serif" }}>
-              {pw}×{ph}px (preview) → exporta {fmt.w}×{fmt.h}px
+            <div style={{ fontSize: 10, color: C.muted, marginTop: 10, fontFamily: "Georgia,serif", textAlign: "center" }}>
+              {pw}×{ph}px preview → exporta {fmt.w}×{fmt.h}px
+              {logo && <span style={{ color: C.accentLt, marginLeft: 8 }}>· Logo: arrastrá para mover, esquina ◢ para escalar</span>}
             </div>
           </div>
         </div>
 
-        {/* Footer: download */}
-        <div style={{
-          padding: "16px 24px", borderTop: `1px solid ${C.border}`,
-          display: "flex", gap: 12, alignItems: "center", flexShrink: 0,
-          background: C.surface,
-        }}>
-          <button
-            onClick={handleDownload}
-            disabled={downloading}
-            style={{
-              background: downloading ? C.surf3 : C.accent,
-              border: "none", borderRadius: 9, color: C.text,
-              fontSize: 14, padding: "13px 28px", cursor: downloading ? "not-allowed" : "pointer",
-              fontFamily: "Georgia,serif", transition: "background .2s",
-              display: "flex", alignItems: "center", gap: 8,
-            }}
-          >
-            {downloading ? (
-              <>
-                <span style={{ display: "inline-flex", gap: 4 }}>
-                  {[0,1,2].map(i => (
-                    <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: C.accentLt, display: "inline-block", animation: "bounce 1.2s infinite", animationDelay: `${i * .2}s` }} />
-                  ))}
-                </span>
-                Generando…
-              </>
-            ) : "⬇ Descargar PNG"}
+        {/* Footer */}
+        <div style={{ padding: "14px 22px", borderTop: `1px solid ${C.border}`, display: "flex", gap: 12, alignItems: "center", flexShrink: 0, background: C.surface }}>
+          <button onClick={handleDownload} disabled={downloading} style={{ background: downloading ? C.surf3 : C.accent, border: "none", borderRadius: 9, color: C.text, fontSize: 14, padding: "12px 28px", cursor: downloading ? "not-allowed" : "pointer", fontFamily: "Georgia,serif", transition: "background .2s", display: "flex", alignItems: "center", gap: 8 }}>
+            {downloading ? (<>{[0,1,2].map(i => <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: C.accentLt, display: "inline-block", animation: "bounce 1.2s infinite", animationDelay: `${i * .2}s` }} />)}Generando…</>) : "⬇ Descargar PNG"}
           </button>
-          <div style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif" }}>
-            {fmt.w}×{fmt.h}px · PNG sin fondo adicional
-          </div>
-          <button onClick={onClose} style={{
-            marginLeft: "auto", background: "transparent", border: `1px solid ${C.border}`,
-            borderRadius: 8, color: C.muted, fontSize: 13, padding: "10px 18px",
-            cursor: "pointer", fontFamily: "Georgia,serif",
-          }}>Cerrar</button>
+          <div style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif" }}>{fmt.w}×{fmt.h}px · PNG listo para publicar</div>
+          <button onClick={onClose} style={{ marginLeft: "auto", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 13, padding: "9px 18px", cursor: "pointer", fontFamily: "Georgia,serif" }}>Cerrar</button>
         </div>
       </div>
     </>
@@ -1211,6 +1135,7 @@ export default function App() {
   const [form, setForm] = useState({
     negocio: "", industria: "", sitioWeb: "", audiencia: "", objetivo: "",
     mes: MONTHS[1].value, tono: TONOS[0], redes: [], pilares: [],
+    logoSrc: null,
   });
   const [contenido, setContenido]     = useState({});
   const [usePalette, setUsePalette]   = useState(false);
@@ -1583,20 +1508,45 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
           <p style={{ fontSize: 15, color: C.muted, lineHeight: 1.75, maxWidth: 480, margin: 0 }}>Completá los datos de tu negocio y en segundos tendrás un plan de contenido completo, editable y listo para ejecutar.</p>
         </div>
 
-        {/* 01 */}
+        {/* 01 — Negocio + Logo */}
         <section style={{ marginBottom: 32 }}>
           <label style={labelS}>01 — Tu negocio</label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
             <input style={inputS} placeholder="Nombre del negocio *" value={form.negocio} onChange={e => setField("negocio", e.target.value)} />
             <input style={inputS} placeholder="Industria (ej: diseño, moda, tech)" value={form.industria} onChange={e => setField("industria", e.target.value)} />
           </div>
-          <div style={{ position: "relative" }}>
+          <div style={{ position: "relative", marginBottom: 12 }}>
             <input style={{ ...inputS, paddingLeft: 38 }} placeholder="Sitio web (opcional) — la IA lo analizará para personalizar el contenido" value={form.sitioWeb} onChange={e => setField("sitioWeb", e.target.value)} />
             <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", fontSize: 14, pointerEvents: "none" }}>🌐</span>
           </div>
+          {/* Logo upload */}
+          <div style={{ background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 18px", display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+            <div style={{ flex: 1, minWidth: 160 }}>
+              <div style={{ fontSize: 13, color: C.text, marginBottom: 3 }}>Logo de marca</div>
+              <div style={{ fontSize: 12, color: C.muted }}>PNG o SVG — se precargará en el editor de cada post</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+              {form.logoSrc && (
+                <img src={form.logoSrc} style={{ height: 36, maxWidth: 100, objectFit: "contain", borderRadius: 5, background: "#fff1", border: `1px solid ${C.border}` }} alt="logo" />
+              )}
+              <input type="file" accept="image/png,image/svg+xml,image/jpeg,image/webp" id="logo-form-upload" style={{ display: "none" }}
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = ev => setField("logoSrc", ev.target.result);
+                  reader.readAsDataURL(file);
+                }} />
+              <label htmlFor="logo-form-upload" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12, padding: "9px 14px", cursor: "pointer", fontFamily: "Georgia,serif", whiteSpace: "nowrap" }}>
+                {form.logoSrc ? "🔄 Cambiar" : "📁 Subir logo"}
+              </label>
+              {form.logoSrc && (
+                <button onClick={() => setField("logoSrc", null)} style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 7, color: C.muted, fontSize: 12, padding: "9px 10px", cursor: "pointer", fontFamily: "Georgia,serif" }}>✕</button>
+              )}
+            </div>
+          </div>
           {form.sitioWeb && <div style={{ marginTop: 8, fontSize: 12, color: C.accentLt, display: "flex", alignItems: "center", gap: 6 }}><span>✦</span> La IA analizará este sitio para enfocar el contenido en tu propuesta de valor real</div>}
         </section>
-
         <div style={{ height: 1, background: C.border, margin: "4px 0 32px" }} />
 
         {/* 02 */}
@@ -1885,6 +1835,7 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
         <DesignEditor
           post={designingPost}
           onClose={() => setDesigningPost(null)}
+          initialLogo={form.logoSrc}
         />
       )}
     </div>
