@@ -237,6 +237,30 @@ function PostCard({ post, semanaNum, onEdit, onRegenerate, regeneratingId, onDes
             />
           </div>
         )}
+        {/* ── Saved design thumbnail ── */}
+        {post.designThumb && (
+          <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, background: `${C.accent}11`, border: `1px solid ${C.accent}33`, borderRadius: 8, padding: "8px 12px" }}>
+            <img src={post.designThumb} alt="pieza" style={{ width: 48, height: 48, objectFit: "cover", borderRadius: 5, flexShrink: 0, border: `1px solid ${C.border}` }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: C.accentLt, fontFamily: "Georgia,serif", marginBottom: 2 }}>
+                🎨 Pieza guardada {post.designPngs?.length > 1 ? `· ${post.designPngs.length} slides` : ""}
+              </div>
+              <div style={{ fontSize: 10, color: C.muted, fontFamily: "Georgia,serif" }}>Abrí el editor para editar · se incluirá en el ZIP</div>
+            </div>
+            {post.designPngs?.length > 0 && (
+              <button
+                onClick={() => {
+                  const link = document.createElement("a");
+                  link.download = `${post.red}-pieza.png`;
+                  link.href = post.designPngs[0];
+                  link.click();
+                }}
+                title="Descargar PNG"
+                style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6, color: C.muted, fontSize: 11, padding: "4px 8px", cursor: "pointer", flexShrink: 0 }}
+              >⬇</button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -339,15 +363,39 @@ const makeSlide = (post, tplKey = "dark", logoSrc = null) => {
   };
 };
 
-function DesignEditor({ post, onClose, initialLogo }) {
-  const [format,   setFormat]   = useState("instagram");
-  const [template, setTemplate] = useState("dark");
-  const [slides, setSlides]     = useState(() => [makeSlide(post, "dark", initialLogo)]);
+function DesignEditor({ post, onClose, initialLogo, onSave, initialDesignState }) {
+  const [format,   setFormat]   = useState(initialDesignState?.format || "instagram");
+  const [template, setTemplate] = useState(initialDesignState?.template || "dark");
+  const [slides, setSlides]     = useState(() => initialDesignState?.slides || [makeSlide(post, "dark", initialLogo)]);
   const [curSlide, setCurSlide] = useState(0);
   const [isCarousel, setIsCarousel] = useState(false);
   const [selBoxId, setSelBoxId] = useState(null); // selected text box id
   const [dragging,  setDragging]  = useState("");  // "move-{id}" | "resize-{id}" | "logo-move" | "logo-resize"
   const [downloading, setDownloading] = useState(false);
+  const [saving,      setSaving]      = useState(false);
+
+  /* ── Save all slides as PNGs + thumbnail, then call onSave ── */
+  const handleSave = async () => {
+    if (!onSave) return;
+    setSaving(true);
+    try {
+      await document.fonts.ready;
+      const pngs = [];
+      for (const sl of slides) {
+        const canvas = await buildCanvas(sl);
+        pngs.push(canvas.toDataURL("image/png"));
+      }
+      // Generate small JPEG thumbnail from first slide
+      const fullCanvas = await buildCanvas(slides[0]);
+      const thumbW = 240, thumbH = Math.round(thumbW * (fmt.h / fmt.w));
+      const thumbCanvas = document.createElement("canvas");
+      thumbCanvas.width = thumbW; thumbCanvas.height = thumbH;
+      thumbCanvas.getContext("2d").drawImage(fullCanvas, 0, 0, thumbW, thumbH);
+      const thumbUrl = thumbCanvas.toDataURL("image/jpeg", 0.8);
+      onSave({ slides, format, template }, pngs, thumbUrl);
+    } catch (e) { console.error("Save error", e); }
+    finally { setSaving(false); }
+  };
 
   const dragRef    = useRef(null);
   const csRef      = useRef(0);     // current slide index ref (avoids stale closure)
@@ -975,6 +1023,11 @@ function DesignEditor({ post, onClose, initialLogo }) {
             <button onClick={handleDownloadAll} disabled={downloading} style={{ background: "transparent", border: `1px solid ${C.teal}`, borderRadius: 9, color: C.teal, fontSize: 13, padding: "11px 20px", cursor: downloading ? "not-allowed" : "pointer", fontFamily: "Georgia,serif" }}>⬇⬇ Descargar todos ({slides.length})</button>
           )}
           <div style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif" }}>{fmt.w}×{fmt.h}px · PNG</div>
+          {onSave && (
+            <button onClick={handleSave} disabled={saving || downloading} style={{ background: saving ? C.surf3 : C.teal, border: "none", borderRadius: 9, color: C.text, fontSize: 14, padding: "11px 22px", cursor: saving ? "not-allowed" : "pointer", fontFamily: "Georgia,serif", transition: "background .2s", display: "flex", alignItems: "center", gap: 8 }}>
+              {saving ? (<>{[0,1,2].map(i => <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff", display: "inline-block", animation: "bounce 1.2s infinite", animationDelay: `${i * .2}s` }} />)}Guardando…</>) : "💾 Guardar pieza al post"}
+            </button>
+          )}
           <button onClick={onClose} style={{ marginLeft: "auto", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 13, padding: "9px 16px", cursor: "pointer", fontFamily: "Georgia,serif" }}>Cerrar</button>
         </div>
       </div>
@@ -1444,6 +1497,63 @@ export default function App() {
 
   /* ── NEW: design editor state ── */
   const [designingPost, setDesigningPost] = useState(null);
+  const [designingSemana, setDesigningSemana] = useState(null);
+
+  /* ── Save design to post ── */
+  const handleSaveDesign = (designState, pngs, thumbUrl) => {
+    if (!designingPost || designingSemana === null) return;
+    setStrategy(prev => ({
+      ...prev,
+      semanas: prev.semanas.map(s => s.numero === designingSemana ? {
+        ...s,
+        posts: s.posts.map(p => p.id === designingPost.id ? {
+          ...p, designState, designPngs: pngs, designThumb: thumbUrl,
+        } : p),
+      } : s),
+    }));
+  };
+
+  /* ── Export all saved designs as ZIP ── */
+  const handleExportZip = async () => {
+    const dataUrlToBlob = (dataUrl) => {
+      const parts = dataUrl.split(",");
+      const mime  = parts[0].match(/:(.*?);/)[1];
+      const bstr  = atob(parts[1]);
+      const u8arr = new Uint8Array(bstr.length);
+      for (let i = 0; i < bstr.length; i++) u8arr[i] = bstr.charCodeAt(i);
+      return new Blob([u8arr], { type: mime });
+    };
+    // Load JSZip from CDN if not already loaded
+    if (!window.JSZip) {
+      await new Promise((res, rej) => {
+        const s = document.createElement("script");
+        s.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+    const zip    = new window.JSZip();
+    const folder = zip.folder(`${form.negocio || "chroma"}-estrategia`);
+    let   count  = 0;
+    strategy.semanas?.forEach(s => {
+      s.posts?.forEach(p => {
+        if (!p.designPngs?.length) return;
+        p.designPngs.forEach((dataUrl, i) => {
+          const suffix = p.designPngs.length > 1 ? `_slide${i + 1}` : "";
+          const name = `S${s.numero}_${p.red}_${p.pilar}${suffix}.png`
+            .replace(/[\s/\\:*?"<>|]/g, "_");
+          folder.file(name, dataUrlToBlob(dataUrl));
+          count++;
+        });
+      });
+    });
+    if (count === 0) { alert("Todavía no guardaste ninguna pieza. Abrí el editor de una publicación y usá '💾 Guardar pieza'."); return; }
+    const blob = await zip.generateAsync({ type: "blob" });
+    const link = document.createElement("a");
+    link.href     = URL.createObjectURL(blob);
+    link.download = `${form.negocio || "chroma"}-estrategia.zip`;
+    link.click();
+  };
 
   const [hasSaved, setHasSaved]     = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
@@ -1992,6 +2102,14 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
             fontFamily: "Georgia,serif", transition: "all .25s",
           }}>{copyFlash ? "✓ Link copiado" : "🔗 Compartir"}</button>
 
+          {(() => {
+            const n = strategy?.semanas?.reduce((a, s) => a + (s.posts?.filter(p => p.designPngs?.length).length || 0), 0) || 0;
+            return n > 0 ? (
+              <button onClick={handleExportZip} title={`${n} pieza${n > 1 ? "s" : ""} guardada${n > 1 ? "s" : ""}`} style={{ background: C.teal, border: "none", borderRadius: 8, color: C.text, fontSize: 12, padding: "8px 14px", cursor: "pointer", fontFamily: "Georgia,serif", display: "flex", alignItems: "center", gap: 5 }}>
+                📦 ZIP ({n})
+              </button>
+            ) : null;
+          })()}
           <button onClick={() => window.print()} style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12, padding: "8px 15px", cursor: "pointer", fontFamily: "Georgia,serif" }}>⬇ PDF</button>
           <button onClick={() => { setScreen("form"); setStrategy(null); setEventos([]); }} style={{ background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 8, color: C.text, fontSize: 12, padding: "8px 15px", cursor: "pointer", fontFamily: "Georgia,serif" }}>← Nueva</button>
         </div>
@@ -2039,7 +2157,7 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
                 onEdit={updatePost}
                 onRegenerate={handleRegenerate}
                 regeneratingId={regeneratingId}
-                onDesign={setDesigningPost}
+                onDesign={(p) => { setDesigningPost(p); setDesigningSemana(semana.numero); }}
               />
             ))}
           </div>
@@ -2124,6 +2242,8 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
           post={designingPost}
           onClose={() => setDesigningPost(null)}
           initialLogo={form.logoSrc}
+          initialDesignState={designingPost?.designState}
+          onSave={handleSaveDesign}
         />
       )}
     </div>
