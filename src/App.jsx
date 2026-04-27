@@ -139,7 +139,7 @@ function Stepper({ value, onChange, min = 0, max = 14 }) {
 }
 
 /* ─── POST CARD ──────────────────────────────────────────────────── */
-function PostCard({ post, semanaNum, onEdit, onRegenerate, regeneratingId, onDesign }) {
+function PostCard({ post, semanaNum, onEdit, onRegenerate, regeneratingId, onDesign, onReel }) {
   const netColor = NET_COLOR[post.red] || C.accent;
   const isRegen  = regeneratingId === post.id;
   return (
@@ -182,6 +182,20 @@ function PostCard({ post, semanaNum, onEdit, onRegenerate, regeneratingId, onDes
           }}
         >
           🎨 Crear pieza
+        </button>
+        <button
+          onClick={() => onReel && onReel(post)}
+          title="Crear Reel con IA"
+          style={{
+            background: `${C.teal}22`,
+            border: `1px solid ${C.teal}55`,
+            borderRadius: 6, color: C.teal,
+            fontSize: 11, padding: "4px 10px",
+            cursor: "pointer", fontFamily: "Georgia,serif",
+            transition: "all .15s", whiteSpace: "nowrap",
+          }}
+        >
+          🎬 Crear Reel
         </button>
 
         <button onClick={() => onRegenerate(semanaNum, post)} disabled={isRegen} style={{
@@ -259,6 +273,19 @@ function PostCard({ post, semanaNum, onEdit, onRegenerate, regeneratingId, onDes
                 style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6, color: C.muted, fontSize: 11, padding: "4px 8px", cursor: "pointer", flexShrink: 0 }}
               >⬇</button>
             )}
+          </div>
+        )}
+        {/* ── Saved reel thumbnail ── */}
+        {post.reelThumb && (
+          <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10, background: `${C.teal}11`, border: `1px solid ${C.teal}33`, borderRadius: 8, padding: "8px 12px" }}>
+            <div style={{ position: "relative", flexShrink: 0 }}>
+              <img src={post.reelThumb} alt="reel" style={{ width: 36, height: 36, objectFit: "cover", borderRadius: 5, border: `1px solid ${C.border}` }} />
+              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, pointerEvents: "none" }}>▶</div>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: C.teal, fontFamily: "Georgia,serif", marginBottom: 2 }}>🎬 Reel guardado</div>
+              <div style={{ fontSize: 10, color: C.muted, fontFamily: "Georgia,serif" }}>Se incluirá en el ZIP · abrí el editor para regrabar</div>
+            </div>
           </div>
         )}
       </div>
@@ -1035,6 +1062,638 @@ function DesignEditor({ post, onClose, initialLogo, onSave, initialDesignState }
   );
 }
 
+
+/* ─── REEL EDITOR ────────────────────────────────────────────────── */
+const REEL_PLATFORMS = [
+  { id: "instagram", label: "Instagram Reels", w: 1080, h: 1920 },
+  { id: "tiktok",    label: "TikTok",          w: 1080, h: 1920 },
+  { id: "youtube",   label: "YouTube Shorts",  w: 1080, h: 1920 },
+  { id: "linkedin",  label: "LinkedIn Video",  w: 1080, h: 1080 },
+];
+const REEL_DURATIONS = [15, 30, 45, 60];
+const REEL_FONTS = [
+  { label: "Georgia",    value: "Georgia, serif" },
+  { label: "Montserrat", value: "Montserrat, sans-serif" },
+  { label: "Arial",      value: "Arial, sans-serif" },
+  { label: "Impact",     value: "Impact, fantasy" },
+  { label: "Courier",    value: "'Courier New', monospace" },
+];
+const REEL_TRANSITIONS = ["fade", "slide", "zoom"];
+
+const makeScene = (label = "ESCENA", text = "", dur = 6) => ({
+  id: `sc${Date.now()}${Math.random().toString(36).slice(2,5)}`,
+  label, text, dur,
+  fontFamily: "Montserrat, sans-serif",
+  fontSize: 36,
+  align: "center",
+  color: "#FFFFFF",
+  bold: true,
+  italic: false,
+  bgType: "gradient",      // "solid" | "gradient" | "image"
+  bgColor: "#0C0C0F",
+  bgColor2: "#7B35D4",
+  bgAngle: 135,
+  bgImage: null,
+  bgFit: "cover",
+  transition: "fade",
+  showLabel: true,
+  labelColor: "#9F5FF0",
+});
+
+function parseReelScript(raw) {
+  const rx = /(GANCHO|ESCENA\s*\d+|CTA):\s*([^\n]+(?:\n(?!GANCHO:|ESCENA|CTA:)[^\n]+)*)/gi;
+  const out = [];
+  let m;
+  while ((m = rx.exec(raw)) !== null) {
+    out.push({ label: m[1].trim().toUpperCase(), text: m[2].replace(/\n/g, " ").trim() });
+  }
+  return out.length ? out : [{ label: "CONTENIDO", text: raw.trim() }];
+}
+
+function reelWrapText(ctx, text, cx, cy, maxW, lineH) {
+  const words = text.split(" ");
+  let line = "";
+  const lines = [];
+  for (const w of words) {
+    const t = line ? line + " " + w : w;
+    if (ctx.measureText(t).width > maxW && line) { lines.push(line); line = w; }
+    else line = t;
+  }
+  if (line) lines.push(line);
+  const totalH = lines.length * lineH;
+  const startY = cy - totalH / 2 + lineH / 2;
+  lines.forEach((l, i) => ctx.fillText(l, cx, startY + i * lineH));
+  return lines.length;
+}
+
+function ReelEditor({ post, onClose, brandForm, onSaveReel }) {
+  const [step, setStep]           = useState(1); // 1=config, 2=scenes, 3=render
+  const [platform, setPlatform]   = useState("instagram");
+  const [duration, setDuration]   = useState(30);
+  const [scenes,   setScenes]     = useState([]);
+  const [selScene, setSelScene]   = useState(0);
+  const [genLoading, setGenLoading] = useState(false);
+  const [genError,   setGenError]   = useState("");
+  const [rendering,  setRendering]  = useState(false);
+  const [progress,   setProgress]   = useState(0);
+  const [videoBlob,  setVideoBlob]  = useState(null);
+  const [saving,     setSaving]     = useState(false);
+
+  const canvasRef  = useRef(null);
+  const rafRef     = useRef(null);
+  const bgImgCache = useRef({});    // url -> HTMLImageElement
+  const bgFileRefs = useRef({});
+
+  const plt = REEL_PLATFORMS.find(p => p.id === platform) || REEL_PLATFORMS[0];
+
+  /* ── Scene mutators ── */
+  const updScene = (id, changes) =>
+    setScenes(prev => prev.map(s => s.id === id ? { ...s, ...changes } : s));
+  const sel = scenes[selScene] || null;
+
+  /* ── Step 1 → 2: generate script ── */
+  const handleGenerate = async () => {
+    setGenError(""); setGenLoading(true);
+    const sceneCount = duration <= 15 ? 2 : duration <= 30 ? 3 : duration <= 45 ? 4 : 5;
+    const prompt = `Generá un guión para un video corto (${duration} segundos) de ${plt.label}.
+
+NEGOCIO: ${brandForm.negocio}${brandForm.industria ? ` — ${brandForm.industria}` : ""}
+AUDIENCIA: ${brandForm.audiencia || "general"}
+TONO: ${brandForm.tono}
+PILAR: ${post.pilar}
+COPY DEL POST: ${post.copy}
+
+Generá exactamente ${sceneCount + 2} secciones con ESTE FORMATO EXACTO (sin texto extra, sin comillas, sin markdown):
+
+GANCHO: [frase de impacto máximo 10 palabras]
+${Array.from({length: sceneCount}, (_, i) => `ESCENA ${i+1}: [punto de valor en máximo 12 palabras]`).join('\n')}
+CTA: [llamada a acción directa máximo 8 palabras]
+
+Respondé SOLO con las secciones, nada más.`;
+    try {
+      const raw = await callClaude([{ role: "user", content: prompt }], 400);
+      const parsed = parseReelScript(raw);
+      const durPerScene = Math.floor(duration / parsed.length);
+      const newScenes = parsed.map((p, i) => ({
+        ...makeScene(p.label, p.text, i === parsed.length - 1
+          ? duration - durPerScene * (parsed.length - 1)
+          : durPerScene),
+        // Vary gradients per scene
+        bgColor:  ["#0C0C0F","#0A0A2E","#1A0A2E","#0A1A0A","#1A0A0A"][i % 5],
+        bgColor2: ["#7B35D4","#2A9D8F","#9F5FF0","#2A9D8F","#E63946"][i % 5],
+      }));
+      setScenes(newScenes);
+      setSelScene(0);
+      setStep(2);
+    } catch (e) {
+      setGenError(`Error generando guión: ${e.message}`);
+    } finally {
+      setGenLoading(false);
+    }
+  };
+
+  /* ── Preload background images ── */
+  useEffect(() => {
+    scenes.forEach(s => {
+      if (s.bgImage && !bgImgCache.current[s.bgImage]) {
+        const img = new Image();
+        img.onload = () => { bgImgCache.current[s.bgImage] = img; };
+        img.src = s.bgImage;
+      }
+    });
+  }, [scenes]);
+
+  /* ── Live preview canvas (step 2) ── */
+  const previewCanvasRef = useRef(null);
+  const previewRaf = useRef(null);
+  const previewT   = useRef(0);
+
+  const drawPreviewFrame = (t, sceneObj) => {
+    const canvas = previewCanvasRef.current; if (!canvas || !sceneObj) return;
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width, H = canvas.height;
+    drawReelFrame(ctx, W, H, sceneObj, t, 1, 0, 1, true);
+  };
+
+  useEffect(() => {
+    if (step !== 2) return;
+    let t = 0;
+    const animate = () => {
+      t += 1/30;
+      if (t > (sel?.dur || 5)) t = 0;
+      drawPreviewFrame(t, sel);
+      previewRaf.current = requestAnimationFrame(animate);
+    };
+    animate();
+    return () => cancelAnimationFrame(previewRaf.current);
+  }, [step, sel, scenes]);
+
+  /* ── Shared frame draw function ── */
+  const drawReelFrame = (ctx, W, H, scene, t, totalDur, frameInScene, alphaIn, isPreview) => {
+    // Background
+    if (scene.bgType === "image" && bgImgCache.current[scene.bgImage]) {
+      const img = bgImgCache.current[scene.bgImage];
+      if (scene.bgFit === "cover") {
+        const s = Math.max(W / img.width, H / img.height);
+        const sw = img.width * s, sh = img.height * s;
+        ctx.drawImage(img, (W - sw) / 2, (H - sh) / 2, sw, sh);
+      } else { ctx.drawImage(img, 0, 0, W, H); }
+      // Dark overlay for readability
+      ctx.fillStyle = "rgba(0,0,0,0.42)"; ctx.fillRect(0, 0, W, H);
+    } else if (scene.bgType === "gradient") {
+      const ang = (scene.bgAngle || 135) * Math.PI / 180;
+      const x0 = W/2 - Math.cos(ang)*W, y0 = H/2 - Math.sin(ang)*H;
+      const x1 = W/2 + Math.cos(ang)*W, y1 = H/2 + Math.sin(ang)*H;
+      const grad = ctx.createLinearGradient(x0, y0, x1, y1);
+      grad.addColorStop(0, scene.bgColor); grad.addColorStop(1, scene.bgColor2);
+      ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+    } else {
+      ctx.fillStyle = scene.bgColor; ctx.fillRect(0, 0, W, H);
+    }
+
+    // Animated orb
+    const ox = W * 0.5 + Math.sin(t * 0.4) * W * 0.15;
+    const oy = H * 0.45 + Math.cos(t * 0.28) * H * 0.08;
+    const orb = ctx.createRadialGradient(ox, oy, 0, ox, oy, W * 0.6);
+    orb.addColorStop(0, "rgba(123,53,212,.18)");
+    orb.addColorStop(0.5, "rgba(42,157,143,.06)");
+    orb.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = orb; ctx.fillRect(0, 0, W, H);
+
+    // Fade alpha
+    const alpha = alphaIn;
+    const slideY = alpha < 1 ? (1 - alpha) * H * 0.04 : 0;
+
+    ctx.save(); ctx.globalAlpha = alpha;
+
+    // Label pill
+    if (scene.showLabel) {
+      const lFont = isPreview ? `bold ${Math.round(12 * (W/400))}px monospace` : "bold 20px monospace";
+      ctx.font = lFont; ctx.textBaseline = "middle"; ctx.textAlign = "center";
+      const lW = ctx.measureText(scene.label).width + 30;
+      const lH = isPreview ? 22 * (W/400) : 34;
+      const lX = W/2 - lW/2, lY = H * 0.29;
+      ctx.fillStyle = `${scene.labelColor}22`;
+      ctx.strokeStyle = `${scene.labelColor}88`; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(lX, lY, lW, lH, lH/2)
+        : ctx.rect(lX, lY, lW, lH);
+      ctx.fill(); ctx.stroke();
+      ctx.fillStyle = scene.labelColor;
+      ctx.fillText(scene.label, W/2, lY + lH/2);
+      // Divider
+      ctx.globalAlpha = alpha * 0.3; ctx.strokeStyle = scene.labelColor;
+      ctx.lineWidth = 0.6;
+      ctx.beginPath(); ctx.moveTo(W*0.25, lY+lH+8); ctx.lineTo(W*0.75, lY+lH+8); ctx.stroke();
+      ctx.globalAlpha = alpha;
+    }
+
+    // Main text
+    ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 16;
+    const mainFontStr = `${scene.italic?"italic ":""}${scene.bold?"bold ":""}${scene.fontSize}px ${scene.fontFamily}`;
+    ctx.font = mainFontStr;
+    ctx.fillStyle = scene.color;
+    ctx.textAlign = scene.align;
+    ctx.textBaseline = "middle";
+    const tx = scene.align === "center" ? W/2 : scene.align === "right" ? W*0.9 : W*0.1;
+    const maxW = W * 0.82;
+    reelWrapText(ctx, scene.text, tx, H * 0.5 + slideY, maxW, scene.fontSize * 1.5);
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+  };
+
+  /* ── Record video ── */
+  const handleRecord = () => {
+    const canvas = canvasRef.current; if (!canvas || rendering) return;
+    const ctx = canvas.getContext("2d");
+    const W = plt.w, H = plt.h;
+    const fps = 30;
+    const chunks = [];
+
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+
+    let recorder;
+    try {
+      const capFn = canvas.captureStream || canvas.mozCaptureStream;
+      if (!capFn) throw new Error("no captureStream");
+      const stream = capFn.call(canvas, fps);
+      try { recorder = new MediaRecorder(stream, { mimeType: "video/webm;codecs=vp9" }); }
+      catch { recorder = new MediaRecorder(stream); }
+    } catch (e) {
+      alert("Tu navegador no soporta grabación de canvas. Usá Chrome o Edge.");
+      return;
+    }
+
+    recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+    recorder.onstop = () => {
+      setVideoBlob(new Blob(chunks, { type: "video/webm" }));
+      setRendering(false);
+    };
+    recorder.start(200);
+    setRendering(true); setProgress(0); setVideoBlob(null);
+
+    // Build frame timeline: [ {scene, startFrame, totalFrames} ]
+    const timeline = scenes.map(s => ({ scene: s, frames: s.dur * fps }));
+    const totalFrames = timeline.reduce((a, t) => a + t.frames, 0);
+    let globalFrame = 0;
+
+    const draw = () => {
+      // Find which scene we're in
+      let acc = 0, sceneObj = null, frameInScene = 0, sceneTotalFrames = 1;
+      for (const slot of timeline) {
+        if (globalFrame < acc + slot.frames) {
+          sceneObj = slot.scene;
+          frameInScene = globalFrame - acc;
+          sceneTotalFrames = slot.frames;
+          break;
+        }
+        acc += slot.frames;
+      }
+      if (!sceneObj) { recorder.stop(); return; }
+
+      const t = globalFrame / fps;
+
+      // Transition alpha
+      const IN_F = Math.min(fps * 0.35, 10);
+      const OUT_F = Math.min(fps * 0.25, 8);
+      const alpha = frameInScene < IN_F
+        ? frameInScene / IN_F
+        : frameInScene > sceneTotalFrames - OUT_F
+          ? (sceneTotalFrames - frameInScene) / OUT_F
+          : 1;
+
+      drawReelFrame(ctx, W, H, sceneObj, t, sceneObj.dur, frameInScene, Math.max(0, Math.min(1, alpha)), false);
+
+      // Progress bar
+      const prog = globalFrame / totalFrames;
+      ctx.fillStyle = "rgba(255,255,255,.08)"; ctx.fillRect(0, H-5, W, 5);
+      const pg = ctx.createLinearGradient(0,0,W,0);
+      pg.addColorStop(0, "#7B35D4"); pg.addColorStop(1, "#2A9D8F");
+      ctx.fillStyle = pg; ctx.fillRect(0, H-5, W*prog, 5);
+
+      // Watermark
+      ctx.save(); ctx.globalAlpha = 0.1;
+      ctx.font = `bold ${Math.round(W*0.012)}px monospace`;
+      ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("CHROMA", W/2, H-18); ctx.restore();
+
+      globalFrame++;
+      setProgress(Math.round((globalFrame / totalFrames) * 100));
+      if (globalFrame >= totalFrames) { recorder.stop(); return; }
+      rafRef.current = requestAnimationFrame(draw);
+    };
+    draw();
+  };
+
+  const handleDownload = () => {
+    if (!videoBlob) return;
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(videoBlob);
+    a.download = `${brandForm.negocio || "chroma"}-${platform}-reel-${Date.now()}.webm`;
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  };
+
+  const handleSave = async () => {
+    if (!videoBlob || !onSaveReel) return;
+    setSaving(true);
+    try {
+      // Generate thumbnail from preview canvas
+      const thumbCanvas = previewCanvasRef.current;
+      const thumbUrl = thumbCanvas ? thumbCanvas.toDataURL("image/jpeg", 0.7) : null;
+      const blobUrl = URL.createObjectURL(videoBlob);
+      onSaveReel({ scenes, platform, duration }, blobUrl, thumbUrl, videoBlob);
+    } finally { setSaving(false); }
+  };
+
+  /* ── Bg image file handler ── */
+  const handleBgFile = (sceneId, file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => updScene(sceneId, { bgImage: ev.target.result, bgType: "image" });
+    reader.readAsDataURL(file);
+  };
+
+  /* ── Styles ── */
+  const RE = {
+    lbl: { display: "block", fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", color: C.accentLt, marginBottom: 5, fontFamily: "Georgia,serif" },
+    inp: { width: "100%", background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 7, color: C.text, fontSize: 12, padding: "7px 9px", fontFamily: "Georgia,serif", boxSizing: "border-box", outline: "none", marginBottom: 7 },
+    chip: (active) => ({ padding: "5px 10px", borderRadius: 5, border: `1px solid ${active ? C.accent : C.border}`, background: active ? `${C.accent}22` : "transparent", color: active ? C.accentLt : C.muted, fontSize: 10, cursor: "pointer", fontFamily: "Georgia,serif", transition: "all .15s", whiteSpace: "nowrap" }),
+    sec: { borderTop: `1px solid ${C.border}`, paddingTop: 10, marginTop: 10 },
+    iconBtn: (active) => ({ width: 28, height: 26, borderRadius: 5, border: `1px solid ${active ? C.accent : C.border}`, background: active ? `${C.accent}22` : "transparent", color: active ? C.accentLt : C.muted, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }),
+    alignBtn: (active) => ({ flex: 1, height: 26, borderRadius: 5, border: `1px solid ${active ? C.accent : C.border}`, background: active ? `${C.accent}22` : "transparent", color: active ? C.accentLt : C.muted, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }),
+  };
+
+  // Preview canvas size
+  const PREV_H = 420;
+  const PREV_W = Math.round(PREV_H * (plt.w / plt.h));
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.78)", zIndex: 60 }} />
+      <div style={{ position: "fixed", right: 0, top: 0, bottom: 0, width: "min(980px,99vw)", background: C.surface, borderLeft: `1px solid ${C.border}`, zIndex: 61, display: "flex", flexDirection: "column", animation: "slideIn .25s ease" }}>
+
+        {/* Header */}
+        <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, color: C.text, fontFamily: "Georgia,serif" }}>🎬 Editor de Reel</div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{post.red} · {post.pilar}</div>
+          </div>
+          {/* Step tabs */}
+          <div style={{ display: "flex", gap: 3, background: C.surf2, borderRadius: 8, padding: 3, border: `1px solid ${C.border}` }}>
+            {[["1","Configurar"], ["2","Escenas"], ["3","Grabar"]].map(([n, label]) => (
+              <button key={n} disabled={parseInt(n) > step} onClick={() => parseInt(n) < step && setStep(parseInt(n))}
+                style={{ padding: "6px 14px", borderRadius: 6, border: "none", background: step === parseInt(n) ? C.accent : "transparent", color: step === parseInt(n) ? C.text : step > parseInt(n) ? C.accentLt : C.muted, fontSize: 12, cursor: step >= parseInt(n) ? "pointer" : "not-allowed", fontFamily: "Georgia,serif", transition: "all .15s" }}>
+                {n}. {label}
+              </button>
+            ))}
+          </div>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", color: C.muted, fontSize: 20, cursor: "pointer" }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+
+          {/* ── LEFT: controls ── */}
+          <div style={{ width: 290, flexShrink: 0, overflowY: "auto", borderRight: `1px solid ${C.border}`, padding: "14px 14px 30px" }}>
+
+            {/* ── STEP 1: Config ── */}
+            {step === 1 && (
+              <div>
+                <label style={RE.lbl}>Plataforma</label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
+                  {REEL_PLATFORMS.map(p => (
+                    <button key={p.id} style={RE.chip(platform === p.id)} onClick={() => setPlatform(p.id)}>{p.label}</button>
+                  ))}
+                </div>
+                <label style={RE.lbl}>Duración (segundos)</label>
+                <div style={{ display: "flex", gap: 5, marginBottom: 12 }}>
+                  {REEL_DURATIONS.map(d => (
+                    <button key={d} style={{ ...RE.chip(duration === d), flex: 1, justifyContent: "center", display: "flex" }} onClick={() => setDuration(d)}>{d}s</button>
+                  ))}
+                </div>
+                <div style={{ background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "11px 13px", marginBottom: 14, fontSize: 12, color: C.muted, fontFamily: "Georgia,serif", lineHeight: 1.6 }}>
+                  <div style={{ color: C.text, marginBottom: 4, fontSize: 12 }}>📋 Post seleccionado:</div>
+                  <div style={{ color: C.accentLt, marginBottom: 4 }}>{post.red} · {post.pilar}</div>
+                  <div style={{ fontSize: 11 }}>{post.copy?.slice(0, 90)}{post.copy?.length > 90 ? "…" : ""}</div>
+                </div>
+                {genError && <div style={{ background: "#2A0808", border: "1px solid #7B1F1F", borderRadius: 7, padding: "9px 12px", color: "#FF9999", fontSize: 12, marginBottom: 10 }}>{genError}</div>}
+                <button
+                  onClick={handleGenerate} disabled={genLoading}
+                  style={{ width: "100%", background: genLoading ? C.surf3 : C.accent, border: "none", borderRadius: 8, color: C.text, fontSize: 13, padding: "12px", cursor: genLoading ? "not-allowed" : "pointer", fontFamily: "Georgia,serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                  {genLoading
+                    ? <>{[0,1,2].map(i => <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: C.accentLt, display: "inline-block", animation: "bounce 1.2s infinite", animationDelay: `${i*.2}s` }} />)} Generando guión…</>
+                    : "→ Generar guión con IA"}
+                </button>
+              </div>
+            )}
+
+            {/* ── STEP 2: Scene editor ── */}
+            {step === 2 && sel && (
+              <div>
+                {/* Scene list */}
+                <label style={RE.lbl}>Escenas ({scenes.length})</label>
+                <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: 10 }}>
+                  {scenes.map((s, i) => (
+                    <div key={s.id} onClick={() => setSelScene(i)}
+                      style={{ display: "flex", alignItems: "center", gap: 6, background: selScene === i ? `${C.accent}22` : C.surf2, border: `1px solid ${selScene === i ? C.accent : C.border}`, borderRadius: 6, padding: "6px 9px", cursor: "pointer", transition: "all .15s" }}>
+                      <span style={{ fontSize: 9, background: selScene === i ? C.accent : C.surf3, color: selScene === i ? "#fff" : C.muted, borderRadius: 3, padding: "1px 5px", flexShrink: 0, fontFamily: "monospace" }}>{s.label.slice(0,4)}</span>
+                      <span style={{ fontSize: 10, color: selScene === i ? C.text : C.muted, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "Georgia,serif" }}>{s.text.slice(0, 24)}{s.text.length > 24 ? "…" : ""}</span>
+                      <span style={{ fontSize: 9, color: C.muted, flexShrink: 0 }}>{s.dur}s</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Selected scene format */}
+                <div style={{ background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 10px 6px" }}>
+                  <label style={RE.lbl}>Texto de la escena</label>
+                  <textarea value={sel.text} onChange={e => updScene(sel.id, { text: e.target.value })} rows={3} style={RE.inp} />
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 7 }}>
+                    <span style={{ fontSize: 9, color: C.accentLt, fontFamily: "Georgia,serif", whiteSpace: "nowrap" }}>DURACIÓN</span>
+                    <input type="range" min={2} max={20} value={sel.dur} onChange={e => updScene(sel.id, { dur: parseInt(e.target.value) })} style={{ flex: 1, accentColor: C.accent }} />
+                    <span style={{ fontSize: 11, color: C.muted, minWidth: 26, fontFamily: "Georgia,serif" }}>{sel.dur}s</span>
+                  </div>
+
+                  {/* Font + B/I */}
+                  <label style={RE.lbl}>Tipografía</label>
+                  <div style={{ display: "flex", gap: 4, marginBottom: 6, alignItems: "center" }}>
+                    <select value={sel.fontFamily} onChange={e => updScene(sel.id, { fontFamily: e.target.value })}
+                      style={{ flex: 1, background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 5, color: C.text, fontSize: 11, padding: "4px 5px", outline: "none", cursor: "pointer" }}>
+                      {REEL_FONTS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                    </select>
+                    <button style={RE.iconBtn(sel.bold)} onClick={() => updScene(sel.id, { bold: !sel.bold })}><strong>B</strong></button>
+                    <button style={RE.iconBtn(sel.italic)} onClick={() => updScene(sel.id, { italic: !sel.italic })}><em>I</em></button>
+                  </div>
+
+                  {/* Size */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+                    <input type="range" min={14} max={80} value={sel.fontSize} onChange={e => updScene(sel.id, { fontSize: parseInt(e.target.value) })} style={{ flex: 1, accentColor: C.accent }} />
+                    <span style={{ fontSize: 11, color: C.muted, minWidth: 34, fontFamily: "Georgia,serif" }}>{sel.fontSize}px</span>
+                  </div>
+
+                  {/* Align */}
+                  <div style={{ display: "flex", gap: 4, marginBottom: 7 }}>
+                    {[["left","←"],["center","↔"],["right","→"]].map(([v,ic]) => (
+                      <button key={v} style={RE.alignBtn(sel.align === v)} onClick={() => updScene(sel.id, { align: v })}>{ic}</button>
+                    ))}
+                  </div>
+
+                  {/* Text color */}
+                  <label style={RE.lbl}>Color de texto</label>
+                  <ColorInput value={sel.color} onChange={v => updScene(sel.id, { color: v })} />
+
+                  {/* Label color + visibility */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                    <label style={{ ...RE.lbl, marginBottom: 0 }}>Mostrar etiqueta escena</label>
+                    <Toggle on={sel.showLabel} onToggle={() => updScene(sel.id, { showLabel: !sel.showLabel })} />
+                  </div>
+                  {sel.showLabel && <ColorInput value={sel.labelColor} onChange={v => updScene(sel.id, { labelColor: v })} />}
+                </div>
+
+                {/* Background */}
+                <div style={RE.sec}>
+                  <label style={RE.lbl}>Fondo de escena</label>
+                  <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+                    {[["gradient","Gradiente"],["solid","Sólido"],["image","Imagen"]].map(([v,label]) => (
+                      <button key={v} style={{ ...RE.chip(sel.bgType === v), flex: 1 }} onClick={() => updScene(sel.id, { bgType: v })}>{label}</button>
+                    ))}
+                  </div>
+
+                  {sel.bgType === "solid" && (
+                    <ColorInput value={sel.bgColor} onChange={v => updScene(sel.id, { bgColor: v })} />
+                  )}
+
+                  {sel.bgType === "gradient" && (
+                    <>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                        <div><div style={{ fontSize: 9, color: C.muted, marginBottom: 3, fontFamily: "Georgia,serif" }}>Color A</div><ColorInput value={sel.bgColor} onChange={v => updScene(sel.id, { bgColor: v })} /></div>
+                        <div><div style={{ fontSize: 9, color: C.muted, marginBottom: 3, fontFamily: "Georgia,serif" }}>Color B</div><ColorInput value={sel.bgColor2} onChange={v => updScene(sel.id, { bgColor2: v })} /></div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 9, color: C.muted, fontFamily: "Georgia,serif" }}>Ángulo</span>
+                        <input type="range" min={0} max={360} value={sel.bgAngle} onChange={e => updScene(sel.id, { bgAngle: parseInt(e.target.value) })} style={{ flex: 1, accentColor: C.accent }} />
+                        <span style={{ fontSize: 9, color: C.muted, minWidth: 30, fontFamily: "Georgia,serif" }}>{sel.bgAngle}°</span>
+                      </div>
+                    </>
+                  )}
+
+                  {sel.bgType === "image" && (
+                    <>
+                      <input type="file" accept="image/*" style={{ display: "none" }}
+                        ref={el => { if (el) bgFileRefs.current[sel.id] = el; }}
+                        onChange={e => handleBgFile(sel.id, e.target.files?.[0])} />
+                      <div style={{ display: "flex", gap: 5 }}>
+                        <button onClick={() => bgFileRefs.current[sel.id]?.click()}
+                          style={{ flex: 1, background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 11, padding: "7px 10px", cursor: "pointer", fontFamily: "Georgia,serif" }}>
+                          🖼 {sel.bgImage ? "Cambiar imagen" : "Subir imagen"}
+                        </button>
+                        {sel.bgImage && <button onClick={() => updScene(sel.id, { bgImage: null, bgType: "gradient" })} style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6, color: C.muted, fontSize: 11, padding: "7px 8px", cursor: "pointer" }}>✕</button>}
+                      </div>
+                      {sel.bgImage && (
+                        <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+                          {["cover","contain"].map(f => <button key={f} style={RE.chip(sel.bgFit === f)} onClick={() => updScene(sel.id, { bgFit: f })}>{f}</button>)}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                <button onClick={() => setStep(3)} style={{ width: "100%", marginTop: 14, background: C.accent, border: "none", borderRadius: 8, color: C.text, fontSize: 13, padding: "11px", cursor: "pointer", fontFamily: "Georgia,serif" }}>→ Continuar a grabar</button>
+              </div>
+            )}
+
+            {/* ── STEP 3: Record ── */}
+            {step === 3 && (
+              <div>
+                <div style={{ background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px", marginBottom: 14 }}>
+                  <div style={{ fontSize: 12, color: C.text, fontFamily: "Georgia,serif", marginBottom: 4 }}>Resumen del video</div>
+                  <div style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif", lineHeight: 1.7 }}>
+                    <div>📺 {plt.label} · {plt.w}×{plt.h}px</div>
+                    <div>🎞 {scenes.length} escenas · {scenes.reduce((a,s) => a+s.dur, 0)}s total</div>
+                    <div>⬇ Formato: .webm (Chrome/Edge)</div>
+                  </div>
+                </div>
+
+                {rendering && (
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                      <span style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif" }}>Renderizando frames…</span>
+                      <span style={{ fontSize: 11, color: C.accentLt, fontFamily: "Georgia,serif" }}>{progress}%</span>
+                    </div>
+                    <div style={{ height: 6, background: C.surf3, borderRadius: 3 }}>
+                      <div style={{ height: "100%", width: `${progress}%`, background: `linear-gradient(90deg, ${C.accent}, ${C.teal})`, borderRadius: 3, transition: "width .1s" }} />
+                    </div>
+                  </div>
+                )}
+
+                <button onClick={handleRecord} disabled={rendering}
+                  style={{ width: "100%", background: rendering ? C.surf3 : "#E63946", border: "none", borderRadius: 8, color: C.text, fontSize: 13, padding: "12px", cursor: rendering ? "not-allowed" : "pointer", fontFamily: "Georgia,serif", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                  {rendering ? <>{[0,1,2].map(i => <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: "#fff", display: "inline-block", animation: "bounce 1.2s infinite", animationDelay: `${i*.2}s` }} />)}{progress}% renderizando…</> : "⏺ Grabar video"}
+                </button>
+
+                {videoBlob && (
+                  <>
+                    <div style={{ background: `${C.teal}18`, border: `1px solid ${C.teal}44`, borderRadius: 8, padding: "10px 12px", marginBottom: 10, fontSize: 11, color: C.teal, fontFamily: "Georgia,serif" }}>
+                      ✓ Video listo — {Math.round(videoBlob.size / 1024)}KB
+                    </div>
+                    <button onClick={handleDownload} style={{ width: "100%", background: C.teal, border: "none", borderRadius: 8, color: C.text, fontSize: 13, padding: "11px", cursor: "pointer", fontFamily: "Georgia,serif", marginBottom: 8 }}>⬇ Descargar .webm</button>
+                    {onSaveReel && (
+                      <button onClick={handleSave} disabled={saving} style={{ width: "100%", background: saving ? C.surf3 : C.accent, border: "none", borderRadius: 8, color: C.text, fontSize: 13, padding: "11px", cursor: saving ? "not-allowed" : "pointer", fontFamily: "Georgia,serif", marginBottom: 8 }}>
+                        {saving ? "Guardando…" : "💾 Guardar al post"}
+                      </button>
+                    )}
+                    <div style={{ fontSize: 10, color: C.muted, fontFamily: "Georgia,serif", textAlign: "center", lineHeight: 1.6 }}>
+                      .webm funciona en Chrome/Edge directo.<br/>Para Instagram usá <a href="https://cloudconvert.com" target="_blank" rel="noreferrer" style={{ color: C.accentLt }}>cloudconvert.com</a> para convertir a .mp4 gratis.
+                    </div>
+                  </>
+                )}
+
+                <button onClick={() => setStep(2)} style={{ width: "100%", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 12, padding: "9px", cursor: "pointer", fontFamily: "Georgia,serif", marginTop: 8 }}>← Volver a editar escenas</button>
+              </div>
+            )}
+          </div>
+
+          {/* ── RIGHT: canvas preview ── */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: C.bg, overflow: "hidden", padding: "16px", gap: 10 }}>
+            <div style={{ fontSize: 10, color: C.muted, letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: "Georgia,serif" }}>
+              {step === 2 ? `Escena ${selScene + 1}/${scenes.length} — preview en vivo` : step === 3 ? `Canvas de render ${plt.w}×${plt.h}px` : `${plt.label} · ${plt.w}×${plt.h}px`}
+            </div>
+
+            {/* Live preview (steps 1 & 2) */}
+            {step !== 3 && (
+              <canvas ref={previewCanvasRef} width={400} height={Math.round(400 * plt.h / plt.w)}
+                style={{ borderRadius: 10, boxShadow: "0 8px 40px rgba(0,0,0,.7)", maxWidth: "100%", maxHeight: PREV_H }} />
+            )}
+
+            {/* Hidden render canvas (step 3) */}
+            <canvas ref={canvasRef} width={plt.w} height={plt.h}
+              style={{ display: step === 3 ? "block" : "none", borderRadius: 8, boxShadow: "0 8px 40px rgba(0,0,0,.7)", maxWidth: "100%", maxHeight: PREV_H }} />
+
+            {step === 1 && (
+              <div style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif", textAlign: "center", maxWidth: 280, lineHeight: 1.7 }}>
+                Configurá la plataforma y duración, luego generá el guión con IA para previsualizar el video.
+              </div>
+            )}
+            {step === 3 && !rendering && !videoBlob && (
+              <div style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif", textAlign: "center", lineHeight: 1.7 }}>
+                El canvas renderizará el video completo frame a frame.<br/>Usá Chrome o Edge para mejor compatibilidad.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: "11px 20px", borderTop: `1px solid ${C.border}`, display: "flex", gap: 10, alignItems: "center", flexShrink: 0, background: C.surface }}>
+          <div style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif" }}>🎬 Reel — {plt.label} · {scenes.reduce((a,s) => a+s.dur, 0) || duration}s</div>
+          <button onClick={onClose} style={{ marginLeft: "auto", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 12, padding: "8px 16px", cursor: "pointer", fontFamily: "Georgia,serif" }}>Cerrar</button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+
 /* ─── ADD PANEL ──────────────────────────────────────────────────── */
 function AddPanel({ onClose, onAddPost, onAddEvento, onEditEvento, onDeleteEvento, brandForm, editingEvento }) {
   const isEditingEvento = !!editingEvento;
@@ -1496,8 +2155,24 @@ export default function App() {
   const [dragPost, setDragPost]         = useState(null);
 
   /* ── NEW: design editor state ── */
-  const [designingPost, setDesigningPost] = useState(null);
+  const [designingPost,  setDesigningPost]  = useState(null);
   const [designingSemana, setDesigningSemana] = useState(null);
+  const [reelPost,    setReelPost]    = useState(null);
+  const [reelSemana,  setReelSemana]  = useState(null);
+
+  /* ── Save reel to post ── */
+  const handleSaveReel = (reelState, blobUrl, thumbUrl, blob) => {
+    if (!reelPost || reelSemana === null) return;
+    setStrategy(prev => ({
+      ...prev,
+      semanas: prev.semanas.map(s => s.numero === reelSemana ? {
+        ...s,
+        posts: s.posts.map(p => p.id === reelPost.id ? {
+          ...p, reelState, reelThumb: thumbUrl, reelBlobUrl: blobUrl,
+        } : p),
+      } : s),
+    }));
+  };
 
   /* ── Save design to post ── */
   const handleSaveDesign = (designState, pngs, thumbUrl) => {
@@ -1537,14 +2212,25 @@ export default function App() {
     let   count  = 0;
     strategy.semanas?.forEach(s => {
       s.posts?.forEach(p => {
-        if (!p.designPngs?.length) return;
-        p.designPngs.forEach((dataUrl, i) => {
-          const suffix = p.designPngs.length > 1 ? `_slide${i + 1}` : "";
-          const name = `S${s.numero}_${p.red}_${p.pilar}${suffix}.png`
-            .replace(/[\s/\\:*?"<>|]/g, "_");
-          folder.file(name, dataUrlToBlob(dataUrl));
-          count++;
-        });
+        // Design PNGs
+        if (p.designPngs?.length) {
+          p.designPngs.forEach((dataUrl, i) => {
+            const suffix = p.designPngs.length > 1 ? `_slide${i + 1}` : "";
+            const name = ("S" + s.numero + "_" + p.red + "_" + p.pilar + suffix + ".png")
+              .replace(/[/\\:*?"<>|\s]/g, "_");
+            folder.file(name, dataUrlToBlob(dataUrl));
+            count++;
+          });
+        }
+        // Reel webm (stored as blob url — fetch it back)
+        if (p.reelBlobUrl) {
+          try {
+            const reelName = ("S" + s.numero + "_" + p.red + "_reel.webm")
+              .replace(/[/\\:*?"<>|\s]/g, "_");
+            folder.file(reelName, fetch(p.reelBlobUrl).then(r => r.blob()));
+            count++;
+          } catch {}
+        }
       });
     });
     if (count === 0) { alert("Todavía no guardaste ninguna pieza. Abrí el editor de una publicación y usá '💾 Guardar pieza'."); return; }
@@ -2103,7 +2789,7 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
           }}>{copyFlash ? "✓ Link copiado" : "🔗 Compartir"}</button>
 
           {(() => {
-            const n = strategy?.semanas?.reduce((a, s) => a + (s.posts?.filter(p => p.designPngs?.length).length || 0), 0) || 0;
+            const n = strategy?.semanas?.reduce((a, s) => a + (s.posts?.filter(p => p.designPngs?.length || p.reelBlobUrl).length || 0), 0) || 0;
             return n > 0 ? (
               <button onClick={handleExportZip} title={`${n} pieza${n > 1 ? "s" : ""} guardada${n > 1 ? "s" : ""}`} style={{ background: C.teal, border: "none", borderRadius: 8, color: C.text, fontSize: 12, padding: "8px 14px", cursor: "pointer", fontFamily: "Georgia,serif", display: "flex", alignItems: "center", gap: 5 }}>
                 📦 ZIP ({n})
@@ -2158,6 +2844,7 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
                 onRegenerate={handleRegenerate}
                 regeneratingId={regeneratingId}
                 onDesign={(p) => { setDesigningPost(p); setDesigningSemana(semana.numero); }}
+                onReel={(p) => { setReelPost(p); setReelSemana(semana.numero); }}
               />
             ))}
           </div>
@@ -2244,6 +2931,16 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
           initialLogo={form.logoSrc}
           initialDesignState={designingPost?.designState}
           onSave={handleSaveDesign}
+        />
+      )}
+
+      {/* ── REEL EDITOR PANEL ── */}
+      {reelPost && (
+        <ReelEditor
+          post={reelPost}
+          onClose={() => setReelPost(null)}
+          brandForm={form}
+          onSaveReel={handleSaveReel}
         />
       )}
     </div>
