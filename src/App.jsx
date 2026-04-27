@@ -333,7 +333,7 @@ const makeSlide = (post, tplKey = "dark", logoSrc = null) => {
     accColor: tpl.accent,
     showBadges: true,
     textBoxes: [{ ...makeTB(post?.copy || ""), color: tpl.text }],
-    cta:       { text: post?.cta || "",      color: "#CCBBFF" },
+    cta:       { text: post?.cta || "", color: "#CCBBFF", x: 0.074, y: 0.72, wF: 0.85, fontSize: 22, fontFamily: "Georgia, serif", align: "left", bold: false, italic: false, underline: false },
     hashtags:  { text: post?.hashtags || "", color: "#9F5FF0", align: "left" },
     logo: logoSrc ? { src: logoSrc, xF: 0.06, yF: 0.05, wF: 0.22, ar: 1 } : null,
   };
@@ -416,6 +416,17 @@ function DesignEditor({ post, onClose, initialLogo }) {
             ...tb,
             wF: Math.max(0.08, Math.min(1 - tb.x, r.wF0 + dx / pw)),
           })
+        }));
+      } else if (dragging === "cta-move") {
+        setSlides(prev => prev.map((s, j) => j !== i ? s : { ...s,
+          cta: { ...s.cta,
+            x: Math.max(0, Math.min(0.9,  r.x0 + dx / pw)),
+            y: Math.max(0, Math.min(0.92, r.y0 + dy / ph)),
+          }
+        }));
+      } else if (dragging === "cta-resize") {
+        setSlides(prev => prev.map((s, j) => j !== i ? s : { ...s,
+          cta: { ...s.cta, wF: Math.max(0.08, Math.min(1 - s.cta.x, r.wF0 + dx / pw)) }
         }));
       } else if (dragging === "logo-move") {
         setSlides(prev => prev.map((s, j) => j !== i || !s.logo ? s : { ...s,
@@ -535,9 +546,23 @@ function DesignEditor({ post, onClose, initialLogo }) {
 
     // CTA
     if (sl.cta.text) {
-      ctx.font = `22px Georgia, serif`; ctx.fillStyle = sl.cta.color;
-      ctx.textAlign = "left"; ctx.textBaseline = "top";
-      ctx.fillText(sl.cta.text, pad, fmt.h * 0.82);
+      const cta = sl.cta;
+      const fontStr = `${cta.italic ? "italic " : ""}${cta.bold ? "bold " : ""}${cta.fontSize}px ${cta.fontFamily}`;
+      ctx.font = fontStr; ctx.fillStyle = cta.color; ctx.textBaseline = "top";
+      ctx.textAlign = cta.align;
+      const cx = cta.x * fmt.w, cy = cta.y * fmt.h, cw = cta.wF * fmt.w;
+      const cRefX = cta.align === "center" ? cx + cw / 2 : cta.align === "right" ? cx + cw : cx;
+      const cLines = canvasWrap(ctx, cta.text, cw);
+      const cLineH = cta.fontSize * 1.6;
+      cLines.forEach((line, idx) => {
+        const ly = cy + idx * cLineH;
+        ctx.fillText(line, cRefX, ly);
+        if (cta.underline) {
+          const tw = ctx.measureText(line).width;
+          const ux = cta.align === "center" ? cRefX - tw / 2 : cta.align === "right" ? cRefX - tw : cRefX;
+          ctx.fillRect(ux, ly + cta.fontSize + 3, tw, Math.max(1, cta.fontSize * 0.06));
+        }
+      });
     }
 
     // Hashtags
@@ -679,10 +704,10 @@ function DesignEditor({ post, onClose, initialLogo }) {
                   {["cover","contain"].map(f => <button key={f} style={chipBtnS(slide.bgFit === f)} onClick={() => updSlide({ bgFit: f })}>{f}</button>)}
                 </div>
               )}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <div><div style={{ fontSize: 9, color: C.accentLt, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4, fontFamily: "Georgia,serif" }}>Fondo</div><ColorInput value={slide.bgColor} onChange={v => updSlide({ bgColor: v })} /></div>
-                <div><div style={{ fontSize: 9, color: C.accentLt, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4, fontFamily: "Georgia,serif" }}>Acento</div><ColorInput value={slide.accColor} onChange={v => updSlide({ accColor: v })} /></div>
-              </div>
+              <div style={{ fontSize: 9, color: C.accentLt, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4, fontFamily: "Georgia,serif" }}>Color de fondo</div>
+              <ColorInput value={slide.bgColor} onChange={v => updSlide({ bgColor: v })} />
+              <div style={{ fontSize: 9, color: C.accentLt, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4, fontFamily: "Georgia,serif" }}>Color de acento</div>
+              <ColorInput value={slide.accColor} onChange={v => updSlide({ accColor: v })} />
             </SideSection>
 
             {/* Text boxes */}
@@ -742,7 +767,26 @@ function DesignEditor({ post, onClose, initialLogo }) {
             {/* CTA */}
             <SideSection title="CTA" defaultOpen={false}>
               <input value={slide.cta.text} onChange={e => updCta({ text: e.target.value })} placeholder="Llamada a la acción…" style={{ ...inp, resize: "none" }} />
+              <div style={{ display: "flex", gap: 4, marginBottom: 7, alignItems: "center" }}>
+                <select value={slide.cta.fontFamily} onChange={e => updCta({ fontFamily: e.target.value })}
+                  style={{ flex: 1, background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 5, color: C.text, fontSize: 11, padding: "4px 6px", fontFamily: "Georgia,serif", outline: "none", cursor: "pointer" }}>
+                  {FONT_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                </select>
+                <button style={{ ...iconBtn(slide.cta.bold), fontWeight: "bold" }} onClick={() => updCta({ bold: !slide.cta.bold })}>B</button>
+                <button style={{ ...iconBtn(slide.cta.italic), fontStyle: "italic" }} onClick={() => updCta({ italic: !slide.cta.italic })}>I</button>
+                <button style={{ ...iconBtn(slide.cta.underline), textDecoration: "underline" }} onClick={() => updCta({ underline: !slide.cta.underline })}>U</button>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+                <input type="range" min={10} max={80} value={slide.cta.fontSize} onChange={e => updCta({ fontSize: parseInt(e.target.value) })} style={{ flex: 1, accentColor: C.teal }} />
+                <span style={{ fontSize: 11, color: C.muted, minWidth: 34, fontFamily: "Georgia,serif" }}>{slide.cta.fontSize}px</span>
+              </div>
+              <div style={{ display: "flex", gap: 4, marginBottom: 7 }}>
+                {[["left","←"],["center","↔"],["right","→"]].map(([v,icon]) => (
+                  <button key={v} style={alignBtnS(slide.cta.align === v)} onClick={() => updCta({ align: v })}>{icon}</button>
+                ))}
+              </div>
               <ColorInput value={slide.cta.color} onChange={v => updCta({ color: v })} />
+              <div style={{ fontSize: 10, color: C.muted, fontFamily: "Georgia,serif", marginTop: 2 }}>Arrastrá en la vista previa para mover · borde derecho para redimensionar</div>
             </SideSection>
 
             {/* Hashtags */}
@@ -870,10 +914,34 @@ function DesignEditor({ post, onClose, initialLogo }) {
                 return <div style={{ position: "absolute", top: afterY, left: ax, width: accentW, height: Math.round(3 * scale), background: slide.accColor, borderRadius: 2, pointerEvents: "none", zIndex: 5 }} />;
               })()}
 
-              {/* CTA */}
-              {slide.cta.text && (
-                <div style={{ position: "absolute", bottom: Math.round(ph * 0.17), left: pPad, right: pPad, fontSize: Math.round(22 * scale), color: slide.cta.color, fontFamily: "Georgia, serif", pointerEvents: "none", zIndex: 5 }}>{slide.cta.text}</div>
-              )}
+              {/* CTA — interactive like text boxes */}
+              {(() => {
+                const cta = slide.cta;
+                const ctaLeft = cta.x * pw, ctaTop = cta.y * ph, ctaW = cta.wF * pw;
+                const ctaPx = cta.fontSize * scale;
+                const isSel = selBoxId === "__cta__";
+                if (!cta.text && !isSel) return null;
+                return (
+                  <div key="cta-box">
+                    {isSel && (
+                      <div
+                        onMouseDown={e => { e.preventDefault(); e.stopPropagation(); dragRef.current = { startX: e.clientX, startY: e.clientY, x0: cta.x, y0: cta.y }; setDragging("cta-move"); }}
+                        style={{ position: "absolute", left: ctaLeft, top: Math.max(0, ctaTop - 18), background: C.teal, borderRadius: "4px 4px 0 0", padding: "2px 8px 1px", fontSize: 9, color: "#fff", cursor: "grab", zIndex: 15, display: "flex", alignItems: "center", gap: 3, whiteSpace: "nowrap", fontFamily: "Georgia,serif" }}>
+                        ⠿ CTA
+                      </div>
+                    )}
+                    <div
+                      onClick={e => { e.stopPropagation(); setSelBoxId("__cta__"); }}
+                      style={{ position: "absolute", left: ctaLeft, top: ctaTop, width: ctaW, fontSize: ctaPx, fontFamily: cta.fontFamily, fontWeight: cta.bold ? "bold" : "normal", fontStyle: cta.italic ? "italic" : "normal", textDecoration: cta.underline ? "underline" : "none", color: cta.color, textAlign: cta.align, lineHeight: 1.6, wordBreak: "break-word", cursor: "pointer", zIndex: 10, outline: isSel ? `1px dashed ${C.teal}99` : "1px dashed transparent", boxSizing: "border-box" }}>
+                      {cta.text || <span style={{ opacity: 0.3, fontStyle: "italic" }}>CTA vacío…</span>}
+                    </div>
+                    {isSel && (
+                      <div onMouseDown={e => { e.preventDefault(); e.stopPropagation(); dragRef.current = { startX: e.clientX, wF0: cta.wF }; setDragging("cta-resize"); }}
+                        style={{ position: "absolute", left: ctaLeft + ctaW - 6, top: ctaTop + Math.max(4, ctaPx * 0.8 - 12), width: 12, height: 24, background: C.teal, borderRadius: 3, cursor: "ew-resize", zIndex: 16 }} />
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Hashtags */}
               {slide.hashtags.text && (
