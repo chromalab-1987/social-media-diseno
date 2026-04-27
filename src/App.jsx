@@ -256,29 +256,28 @@ const DESIGN_TEMPLATES = {
   editorial: { label: "Editorial", bg: "#F4EFE6", text: "#2C1810", accent: "#E63946", gradient: false },
 };
 const FONT_OPTIONS = [
-  { label: "Georgia",   value: "Georgia, serif" },
-  { label: "Arial",     value: "Arial, sans-serif" },
-  { label: "Helvetica", value: "'Helvetica Neue', Helvetica, sans-serif" },
-  { label: "Times",     value: "'Times New Roman', Times, serif" },
-  { label: "Verdana",   value: "Verdana, Geneva, sans-serif" },
-  { label: "Impact",    value: "Impact, Charcoal, fantasy" },
-  { label: "Courier",   value: "'Courier New', Courier, monospace" },
-  { label: "Trebuchet", value: "'Trebuchet MS', Helvetica, sans-serif" },
+  { label: "Georgia",     value: "Georgia, serif" },
+  { label: "Montserrat",  value: "Montserrat, sans-serif" },
+  { label: "Arial",       value: "Arial, sans-serif" },
+  { label: "Helvetica",   value: "'Helvetica Neue', Helvetica, sans-serif" },
+  { label: "Times",       value: "'Times New Roman', Times, serif" },
+  { label: "Verdana",     value: "Verdana, Geneva, sans-serif" },
+  { label: "Impact",      value: "Impact, Charcoal, fantasy" },
+  { label: "Courier",     value: "'Courier New', Courier, monospace" },
+  { label: "Trebuchet",   value: "'Trebuchet MS', Helvetica, sans-serif" },
 ];
 
-/* ColorInput: color picker + editable hex field */
 function ColorInput({ value, onChange }) {
   const [hex, setHex] = useState(value);
   useEffect(() => setHex(value), [value]);
   const safe = /^#[0-9A-Fa-f]{6}$/.test(hex) ? hex : "#000000";
   const onHex = (v) => { setHex(v); if (/^#[0-9A-Fa-f]{6}$/.test(v)) onChange(v); };
   return (
-    <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 10 }}>
-      <input type="color" value={safe}
-        onChange={e => { onChange(e.target.value); setHex(e.target.value); }}
-        style={{ width: 30, height: 26, border: "none", borderRadius: 4, cursor: "pointer", flexShrink: 0, padding: 1 }} />
+    <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
+      <input type="color" value={safe} onChange={e => { onChange(e.target.value); setHex(e.target.value); }}
+        style={{ width: 28, height: 24, border: "none", borderRadius: 4, cursor: "pointer", flexShrink: 0, padding: 1 }} />
       <input type="text" value={hex} onChange={e => onHex(e.target.value)} maxLength={7} placeholder="#000000"
-        style={{ flex: 1, background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 5, color: C.text, fontSize: 11, padding: "4px 8px", fontFamily: "monospace", outline: "none", boxSizing: "border-box" }} />
+        style={{ flex: 1, background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 5, color: C.text, fontSize: 11, padding: "3px 7px", fontFamily: "monospace", outline: "none", boxSizing: "border-box" }} />
     </div>
   );
 }
@@ -301,102 +300,147 @@ function canvasWrap(ctx, text, maxW) {
   return lines;
 }
 
+/* Collapsible sidebar section */
+function SideSection({ title, children, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 10 }}>
+      <div onClick={() => setOpen(v => !v)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0 8px", cursor: "pointer" }}>
+        <span style={{ fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", color: C.accentLt, fontFamily: "Georgia,serif" }}>{title}</span>
+        <span style={{ color: C.muted, fontSize: 9 }}>{open ? "▲" : "▼"}</span>
+      </div>
+      {open && children}
+    </div>
+  );
+}
+
+/* One text box object */
+const makeTB = (text = "", x = 0.074, y = 0.34) => ({
+  id: `tb${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+  text, x, y, wF: 0.85,
+  fontFamily: "Georgia, serif", fontSize: 42,
+  align: "left", color: "#F2EDE4",
+  bold: false, italic: false, underline: false,
+});
+
+/* One slide object */
+const makeSlide = (post, tplKey = "dark", logoSrc = null) => {
+  const tpl = DESIGN_TEMPLATES[tplKey];
+  return {
+    id: `sl${Date.now()}${Math.random().toString(36).slice(2, 6)}`,
+    bgColor: tpl.gradient ? "#1A0A2E" : tpl.bg,
+    bgImage: null, bgFit: "cover",
+    accColor: tpl.accent,
+    showBadges: true,
+    textBoxes: [{ ...makeTB(post?.copy || ""), color: tpl.text }],
+    cta:       { text: post?.cta || "",      color: "#CCBBFF" },
+    hashtags:  { text: post?.hashtags || "", color: "#9F5FF0", align: "left" },
+    logo: logoSrc ? { src: logoSrc, xF: 0.06, yF: 0.05, wF: 0.22, ar: 1 } : null,
+  };
+};
+
 function DesignEditor({ post, onClose, initialLogo }) {
   const [format,   setFormat]   = useState("instagram");
   const [template, setTemplate] = useState("dark");
-  const [copy,     setCopy]     = useState(post.copy     || "");
-  const [cta,      setCta]      = useState(post.cta      || "");
-  const [hashtags, setHashtags] = useState(post.hashtags || "");
-  const [fontFamily, setFontFamily] = useState("Georgia, serif");
-  const [fontSize,   setFontSize]   = useState(42);
-  const [align,      setAlign]      = useState("left");
-  const [bgColor,   setBgColor]   = useState(DESIGN_TEMPLATES.dark.bg);
-  const [accColor,  setAccColor]  = useState(DESIGN_TEMPLATES.dark.accent);
-  const [copyColor, setCopyColor] = useState(DESIGN_TEMPLATES.dark.text);
-  const [ctaColor,  setCtaColor]  = useState("#CCBBFF");
-  const [hashColor, setHashColor] = useState("#9F5FF0");
-  const [bgImage, setBgImage]  = useState(null);
-  const [bgFit,   setBgFit]    = useState("cover");
-  const [showBadges, setShowBadges] = useState(true);
-  const [textXF, setTextXF] = useState(0.074);
-  const [textYF, setTextYF] = useState(0.34);
-  const [logo, setLogo] = useState(
-    initialLogo ? { src: initialLogo, xF: 0.06, yF: 0.05, wF: 0.22, ar: 1 } : null
-  );
+  const [slides, setSlides]     = useState(() => [makeSlide(post, "dark", initialLogo)]);
+  const [curSlide, setCurSlide] = useState(0);
+  const [isCarousel, setIsCarousel] = useState(false);
+  const [selBoxId, setSelBoxId] = useState(null); // selected text box id
+  const [dragging,  setDragging]  = useState("");  // "move-{id}" | "resize-{id}" | "logo-move" | "logo-resize"
   const [downloading, setDownloading] = useState(false);
-  const [dragging,    setDragging]    = useState("");
-  const textDrag   = useRef(null);
-  const logoDrag   = useRef(null);
-  const logoResize = useRef(null);
+
+  const dragRef    = useRef(null);
+  const csRef      = useRef(0);     // current slide index ref (avoids stale closure)
   const previewRef = useRef(null);
   const bgFileRef  = useRef(null);
-  const logoFileRef = useRef(null);
+  const logoFileRef= useRef(null);
 
-  const fmt = DESIGN_FORMATS[format];
-  const tpl = DESIGN_TEMPLATES[template];
+  useEffect(() => { csRef.current = curSlide; }, [curSlide]);
 
+  const slide = slides[curSlide] || slides[0];
+  const fmt   = DESIGN_FORMATS[format];
+  const tpl   = DESIGN_TEMPLATES[template];
+
+  /* ── Slide mutators ── */
+  const updSlide = (changes) => setSlides(prev =>
+    prev.map((s, i) => i === csRef.current ? { ...s, ...changes } : s)
+  );
+  const updTB = (id, changes) => setSlides(prev =>
+    prev.map((s, i) => i === csRef.current ? { ...s, textBoxes: s.textBoxes.map(tb => tb.id === id ? { ...tb, ...changes } : tb) } : s)
+  );
+  const updHashtags = (changes) => updSlide({ hashtags: { ...slide.hashtags, ...changes } });
+  const updCta      = (changes) => updSlide({ cta:      { ...slide.cta,      ...changes } });
+  const updLogo     = (changes) => updSlide({ logo:     slide.logo ? { ...slide.logo, ...changes } : null });
+
+  const selBox = slide.textBoxes.find(tb => tb.id === selBoxId) || null;
+
+  /* ── Template sync (current slide only) ── */
   useEffect(() => {
-    setBgColor(tpl.bg === "gradient" ? "#1A0A2E" : tpl.bg);
-    setAccColor(tpl.accent);
-    setCopyColor(tpl.text);
+    const t = DESIGN_TEMPLATES[template];
+    updSlide({
+      bgColor: t.gradient ? "#1A0A2E" : t.bg,
+      accColor: t.accent,
+      textBoxes: slide.textBoxes.map((tb, i) => i === 0 ? { ...tb, color: t.text } : tb),
+    });
   }, [template]);
 
+  /* ── Preview dimensions ── */
   const PREV_W = 420, PREV_H = 460;
-  const scale = Math.min(PREV_W / fmt.w, PREV_H / fmt.h);
+  const scale  = Math.min(PREV_W / fmt.w, PREV_H / fmt.h);
   const pw = Math.round(fmt.w * scale);
   const ph = Math.round(fmt.h * scale);
-  const pFont  = Math.round(fontSize * scale);
-  const pPad   = Math.round(60 * scale);
-  const pLineH = Math.round(fontSize * 1.6 * scale);
-  const pBadgeH = Math.round(32 * scale);
-  const previewBg = bgImage ? "transparent"
-    : tpl.gradient ? `linear-gradient(135deg, ${bgColor} 0%, #7B35D4 60%, #2A9D8F 100%)`
-    : bgColor;
-  const approxCharsPerLine = Math.max(1, Math.floor((pw - textXF * pw - pPad) / (pFont * 0.55)));
-  const approxLines = Math.max(1, Math.ceil(copy.length / approxCharsPerLine));
-  const pTextH    = approxLines * pLineH;
-  const textTopPx  = textYF * ph;
-  const accentTopPx = textTopPx + pTextH + Math.round(22 * scale);
-  const ctaTopPx    = accentTopPx + Math.round(20 * scale);
+  const pPad    = Math.round(60  * scale);
+  const pBadgeH = Math.round(30  * scale);
 
+  /* ── Drag handling ── */
   useEffect(() => {
     if (!dragging) return;
     const onMove = (e) => {
-      if (dragging === "text" && textDrag.current) {
-        const dx = e.clientX - textDrag.current.startX;
-        const dy = e.clientY - textDrag.current.startY;
-        setTextXF(Math.max(0, Math.min(0.8,  textDrag.current.startXF + dx / pw)));
-        setTextYF(Math.max(0, Math.min(0.85, textDrag.current.startYF + dy / ph)));
-      }
-      if (dragging === "logo" && logoDrag.current) {
-        const dx = e.clientX - logoDrag.current.startX;
-        const dy = e.clientY - logoDrag.current.startY;
-        setLogo(l => l ? { ...l,
-          xF: Math.max(0, Math.min(0.92, logoDrag.current.startXF + dx / pw)),
-          yF: Math.max(0, Math.min(0.92, logoDrag.current.startYF + dy / ph)),
-        } : l);
-      }
-      if (dragging === "resize" && logoResize.current) {
-        const dx = e.clientX - logoResize.current.startX;
-        setLogo(l => l ? { ...l, wF: Math.max(0.04, Math.min(0.9, logoResize.current.startWF + dx / pw)) } : l);
+      const r = dragRef.current; if (!r) return;
+      const i = csRef.current;
+      const dx = e.clientX - r.startX;
+      const dy = e.clientY - r.startY;
+      if (dragging.startsWith("move-")) {
+        const id = dragging.slice(5);
+        setSlides(prev => prev.map((s, j) => j !== i ? s : { ...s,
+          textBoxes: s.textBoxes.map(tb => tb.id !== id ? tb : {
+            ...tb,
+            x: Math.max(0, Math.min(0.9,  r.x0 + dx / pw)),
+            y: Math.max(0, Math.min(0.92, r.y0 + dy / ph)),
+          })
+        }));
+      } else if (dragging.startsWith("resize-")) {
+        const id = dragging.slice(7);
+        setSlides(prev => prev.map((s, j) => j !== i ? s : { ...s,
+          textBoxes: s.textBoxes.map(tb => tb.id !== id ? tb : {
+            ...tb,
+            wF: Math.max(0.08, Math.min(1 - tb.x, r.wF0 + dx / pw)),
+          })
+        }));
+      } else if (dragging === "logo-move") {
+        setSlides(prev => prev.map((s, j) => j !== i || !s.logo ? s : { ...s,
+          logo: { ...s.logo, xF: Math.max(0, Math.min(0.9, r.xF0 + dx / pw)), yF: Math.max(0, Math.min(0.9, r.yF0 + dy / ph)) }
+        }));
+      } else if (dragging === "logo-resize") {
+        setSlides(prev => prev.map((s, j) => j !== i || !s.logo ? s : { ...s,
+          logo: { ...s.logo, wF: Math.max(0.04, Math.min(0.9, r.wF0 + dx / pw)) }
+        }));
       }
     };
-    const onUp = () => {
-      textDrag.current = null; logoDrag.current = null; logoResize.current = null;
-      setDragging("");
-    };
+    const onUp = () => { dragRef.current = null; setDragging(""); };
     window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    window.addEventListener("mouseup",   onUp);
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
   }, [dragging, pw, ph]);
 
+  /* ── Logo upload ── */
   const handleLogoFile = (file) => {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = ev => {
       const src = ev.target.result;
       const img = new Image();
-      img.onload = () => setLogo({ src, xF: 0.06, yF: 0.05, wF: 0.22, ar: img.height / img.width });
+      img.onload = () => updSlide({ logo: { src, xF: 0.06, yF: 0.05, wF: 0.22, ar: img.height / img.width } });
       img.src = src;
     };
     reader.readAsDataURL(file);
@@ -404,291 +448,466 @@ function DesignEditor({ post, onClose, initialLogo }) {
   const handleBgFile = (file) => {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => setBgImage(ev.target.result);
+    reader.onload = ev => updSlide({ bgImage: ev.target.result });
     reader.readAsDataURL(file);
   };
 
-  const buildCanvas = async () => {
+  /* ── Canvas export ── */
+  const buildCanvas = async (sl) => {
     const canvas = document.createElement("canvas");
     canvas.width = fmt.w; canvas.height = fmt.h;
     const ctx = canvas.getContext("2d");
-    const loadImg = (src) => new Promise((res, rej) => {
+    const loadImg = src => new Promise((res, rej) => {
       const img = new Image(); img.onload = () => res(img); img.onerror = rej;
       img.crossOrigin = "anonymous"; img.src = src;
     });
-    if (bgImage) {
+
+    // Ensure web fonts are loaded (including Montserrat)
+    try { await document.fonts.ready; } catch {}
+
+    // Background
+    if (sl.bgImage) {
       try {
-        const img = await loadImg(bgImage);
-        if (bgFit === "cover") {
+        const img = await loadImg(sl.bgImage);
+        if (sl.bgFit === "cover") {
           const s = Math.max(fmt.w / img.width, fmt.h / img.height);
           const sw = img.width * s, sh = img.height * s;
           ctx.drawImage(img, (fmt.w - sw) / 2, (fmt.h - sh) / 2, sw, sh);
-        } else { ctx.drawImage(img, 0, 0, fmt.w, fmt.h); }
-      } catch { ctx.fillStyle = bgColor; ctx.fillRect(0, 0, fmt.w, fmt.h); }
+        } else ctx.drawImage(img, 0, 0, fmt.w, fmt.h);
+      } catch { ctx.fillStyle = sl.bgColor; ctx.fillRect(0, 0, fmt.w, fmt.h); }
     } else if (tpl.gradient) {
       const grad = ctx.createLinearGradient(0, 0, fmt.w, fmt.h);
-      grad.addColorStop(0, bgColor); grad.addColorStop(0.6, "#7B35D4"); grad.addColorStop(1, "#2A9D8F");
+      grad.addColorStop(0, sl.bgColor); grad.addColorStop(0.6, "#7B35D4"); grad.addColorStop(1, "#2A9D8F");
       ctx.fillStyle = grad; ctx.fillRect(0, 0, fmt.w, fmt.h);
-    } else { ctx.fillStyle = bgColor; ctx.fillRect(0, 0, fmt.w, fmt.h); }
+    } else { ctx.fillStyle = sl.bgColor; ctx.fillRect(0, 0, fmt.w, fmt.h); }
 
-    const pad = 80, lineH = fontSize * 1.6;
-    const netColor = NET_COLOR[post.red] || accColor;
+    const pad = 80, netColor = NET_COLOR[post.red] || sl.accColor;
 
-    if (showBadges) {
+    // Badges
+    if (sl.showBadges) {
       const bH = 44;
       ctx.fillStyle = `${netColor}28`; drawRR(ctx, pad, pad, 200, bH, bH / 2); ctx.fill();
       ctx.strokeStyle = `${netColor}55`; ctx.lineWidth = 1; drawRR(ctx, pad, pad, 200, bH, bH / 2); ctx.stroke();
-      ctx.fillStyle = netColor;
-      ctx.font = `bold ${Math.round(fontSize * 0.38)}px ${fontFamily}`;
-      ctx.textAlign = "left"; ctx.textBaseline = "middle";
-      ctx.fillText(post.red, pad + 18, pad + bH / 2);
+      ctx.fillStyle = netColor; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.font = `bold 20px Georgia, serif`; ctx.fillText(post.red, pad + 18, pad + bH / 2);
       if (post.pilar) {
-        ctx.font = `${Math.round(fontSize * 0.32)}px ${fontFamily}`;
+        ctx.font = `16px Georgia, serif`;
         const pilarW = ctx.measureText(post.pilar).width + 28;
-        ctx.fillStyle = `${accColor}22`; drawRR(ctx, fmt.w - pad - pilarW, pad, pilarW, bH, bH / 2); ctx.fill();
-        ctx.fillStyle = accColor; ctx.fillText(post.pilar, fmt.w - pad - pilarW + 14, pad + bH / 2);
+        ctx.fillStyle = `${sl.accColor}22`; drawRR(ctx, fmt.w - pad - pilarW, pad, pilarW, bH, bH / 2); ctx.fill();
+        ctx.fillStyle = sl.accColor; ctx.fillText(post.pilar, fmt.w - pad - pilarW + 14, pad + bH / 2);
       }
     }
 
-    const textCanvasX = textXF * fmt.w, textCanvasY = textYF * fmt.h;
-    const maxW = fmt.w - textCanvasX - pad;
-    ctx.font = `${fontSize}px ${fontFamily}`; ctx.textBaseline = "top"; ctx.fillStyle = copyColor;
-    const tAlign = align === "center" ? "center" : align === "right" ? "right" : "left";
-    ctx.textAlign = tAlign;
-    const lines = canvasWrap(ctx, copy, maxW);
-    const refX = align === "center" ? textCanvasX + maxW / 2 : align === "right" ? textCanvasX + maxW : textCanvasX;
-    lines.forEach((ln, i) => ctx.fillText(ln, refX, textCanvasY + i * lineH));
-    const totalTextH = lines.length * lineH;
-    const accentY = textCanvasY + totalTextH + 36;
-    ctx.fillStyle = accColor;
-    const accentX = align === "center" ? refX - 50 : align === "right" ? refX - 80 : refX;
-    ctx.fillRect(accentX, accentY, 80, 4);
-    if (cta) {
-      ctx.font = `${Math.round(fontSize * 0.42)}px ${fontFamily}`; ctx.fillStyle = ctaColor;
-      ctx.textAlign = tAlign; ctx.fillText(cta, refX, accentY + 32);
+    // Text boxes
+    for (const box of sl.textBoxes) {
+      if (!box.text.trim()) continue;
+      const fontStr = `${box.italic ? "italic " : ""}${box.bold ? "bold " : ""}${box.fontSize}px ${box.fontFamily}`;
+      ctx.font = fontStr; ctx.fillStyle = box.color; ctx.textBaseline = "top";
+      const canvasX = box.x * fmt.w, canvasY = box.y * fmt.h, canvasW = box.wF * fmt.w;
+      ctx.textAlign = box.align;
+      const refX = box.align === "center" ? canvasX + canvasW / 2 : box.align === "right" ? canvasX + canvasW : canvasX;
+      const lines = canvasWrap(ctx, box.text, canvasW);
+      const lineH = box.fontSize * 1.6;
+      lines.forEach((line, idx) => {
+        const ly = canvasY + idx * lineH;
+        ctx.fillText(line, refX, ly);
+        if (box.underline) {
+          const tw = ctx.measureText(line).width;
+          const ux = box.align === "center" ? refX - tw / 2 : box.align === "right" ? refX - tw : refX;
+          ctx.fillRect(ux, ly + box.fontSize + 3, tw, Math.max(1, box.fontSize * 0.06));
+        }
+      });
     }
-    if (hashtags) {
-      ctx.font = `${Math.round(fontSize * 0.34)}px ${fontFamily}`; ctx.fillStyle = hashColor;
-      ctx.textAlign = "left"; ctx.textBaseline = "bottom";
-      ctx.fillText(hashtags.length > 90 ? hashtags.slice(0, 90) + "\u2026" : hashtags, pad, fmt.h - pad);
+
+    // Accent line (below first text box)
+    if (sl.textBoxes.length > 0) {
+      const tb0 = sl.textBoxes[0];
+      ctx.font = `${tb0.fontSize}px ${tb0.fontFamily}`;
+      const w0 = tb0.wF * fmt.w;
+      const lines0 = canvasWrap(ctx, tb0.text, w0);
+      const y0 = tb0.y * fmt.h + lines0.length * tb0.fontSize * 1.6 + 30;
+      ctx.fillStyle = sl.accColor;
+      const ax = tb0.align === "center" ? tb0.x * fmt.w + w0 / 2 - 50
+               : tb0.align === "right"  ? tb0.x * fmt.w + w0 - 80
+               : tb0.x * fmt.w;
+      ctx.fillRect(ax, y0, 80, 4);
     }
-    if (logo) {
+
+    // CTA
+    if (sl.cta.text) {
+      ctx.font = `22px Georgia, serif`; ctx.fillStyle = sl.cta.color;
+      ctx.textAlign = "left"; ctx.textBaseline = "top";
+      ctx.fillText(sl.cta.text, pad, fmt.h * 0.82);
+    }
+
+    // Hashtags
+    if (sl.hashtags.text) {
+      ctx.font = `18px Georgia, serif`; ctx.fillStyle = sl.hashtags.color;
+      ctx.textBaseline = "bottom";
+      const hAlign = sl.hashtags.align;
+      ctx.textAlign = hAlign;
+      const hx = hAlign === "center" ? fmt.w / 2 : hAlign === "right" ? fmt.w - pad : pad;
+      const ht = sl.hashtags.text.length > 90 ? sl.hashtags.text.slice(0, 90) + "\u2026" : sl.hashtags.text;
+      ctx.fillText(ht, hx, fmt.h - pad);
+    }
+
+    // Logo (on top)
+    if (sl.logo) {
       try {
-        const logoImg = await loadImg(logo.src);
-        const lw = logo.wF * fmt.w, lh = lw * logo.ar;
-        ctx.drawImage(logoImg, logo.xF * fmt.w, logo.yF * fmt.h, lw, lh);
+        const logoImg = await loadImg(sl.logo.src);
+        const lw = sl.logo.wF * fmt.w, lh = lw * sl.logo.ar;
+        ctx.drawImage(logoImg, sl.logo.xF * fmt.w, sl.logo.yF * fmt.h, lw, lh);
       } catch {}
     }
     return canvas;
   };
 
-  const handleDownload = async () => {
+  const handleDownload = async (idx = curSlide) => {
     setDownloading(true);
     try {
-      const canvas = await buildCanvas();
+      const canvas = await buildCanvas(slides[idx]);
       const link = document.createElement("a");
-      link.download = `${post.red}-${format}-${Date.now()}.png`;
+      link.download = `${post.red}-${format}-slide${idx + 1}-${Date.now()}.png`;
       link.href = canvas.toDataURL("image/png"); link.click();
-    } catch (e) { console.error("Export error", e); }
+    } catch (e) { console.error(e); }
     finally { setDownloading(false); }
   };
 
-  const inp = { width: "100%", background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 7, color: C.text, fontSize: 12, padding: "8px 10px", fontFamily: "Georgia,serif", boxSizing: "border-box", outline: "none", marginBottom: 8, resize: "vertical" };
-  const lbl = { display: "block", fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", color: C.accentLt, marginBottom: 5, fontFamily: "Georgia,serif" };
-  const sec = { borderTop: `1px solid ${C.border}`, paddingTop: 12, marginTop: 12 };
-  const chipBtnS = (active) => ({ flex: 1, padding: "6px 3px", borderRadius: 5, border: `1px solid ${active ? C.accent : C.border}`, background: active ? `${C.accent}22` : "transparent", color: active ? C.accentLt : C.muted, fontSize: 10, cursor: "pointer", fontFamily: "Georgia,serif", transition: "all .15s", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" });
-  const uploadBtnStyle = { display: "inline-flex", alignItems: "center", gap: 6, background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 7, color: C.text, fontSize: 11, padding: "7px 12px", cursor: "pointer", fontFamily: "Georgia,serif" };
-  const alignBtnS = (active) => ({ flex: 1, height: 28, borderRadius: 5, border: `1px solid ${active ? C.accent : C.border}`, background: active ? `${C.accent}22` : "transparent", color: active ? C.accentLt : C.muted, cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" });
+  const handleDownloadAll = async () => {
+    setDownloading(true);
+    try {
+      for (let i = 0; i < slides.length; i++) {
+        const canvas = await buildCanvas(slides[i]);
+        const link = document.createElement("a");
+        link.download = `${post.red}-${format}-slide${i + 1}.png`;
+        link.href = canvas.toDataURL("image/png"); link.click();
+        await new Promise(r => setTimeout(r, 700));
+      }
+    } catch (e) { console.error(e); }
+    finally { setDownloading(false); }
+  };
+
+  /* ── Carousel helpers ── */
+  const addSlide = () => {
+    const newSlide = { ...makeSlide(null, template, null), id: `sl${Date.now()}` };
+    setSlides(prev => [...prev, newSlide]);
+    setCurSlide(slides.length);
+  };
+  const duplicateSlide = () => {
+    const dup = { ...slide, id: `sl${Date.now()}`, textBoxes: slide.textBoxes.map(tb => ({ ...tb, id: `tb${Date.now()}${Math.random().toString(36).slice(2,5)}` })) };
+    setSlides(prev => { const n = [...prev]; n.splice(curSlide + 1, 0, dup); return n; });
+    setCurSlide(curSlide + 1);
+  };
+  const deleteSlide = () => {
+    if (slides.length <= 1) return;
+    setSlides(prev => prev.filter((_, i) => i !== curSlide));
+    setCurSlide(Math.max(0, curSlide - 1));
+  };
+
+  /* ── Styles ── */
+  const inp = { width: "100%", background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 7, color: C.text, fontSize: 12, padding: "7px 9px", fontFamily: "Georgia,serif", boxSizing: "border-box", outline: "none", marginBottom: 7, resize: "vertical" };
+  const chipBtnS = (active) => ({ flex: 1, padding: "5px 2px", borderRadius: 5, border: `1px solid ${active ? C.accent : C.border}`, background: active ? `${C.accent}22` : "transparent", color: active ? C.accentLt : C.muted, fontSize: 10, cursor: "pointer", fontFamily: "Georgia,serif", transition: "all .15s", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" });
+  const alignBtnS = (active) => ({ flex: 1, height: 26, borderRadius: 5, border: `1px solid ${active ? C.accent : C.border}`, background: active ? `${C.accent}22` : "transparent", color: active ? C.accentLt : C.muted, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" });
+  const iconBtn = (active, title) => ({ width: 28, height: 26, borderRadius: 5, border: `1px solid ${active ? C.accent : C.border}`, background: active ? `${C.accent}22` : "transparent", color: active ? C.accentLt : C.muted, cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", title });
+  const uploadBtnStyle = { display: "inline-flex", alignItems: "center", gap: 5, background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 6, color: C.text, fontSize: 11, padding: "6px 10px", cursor: "pointer", fontFamily: "Georgia,serif", flex: 1, justifyContent: "center" };
   const isDragging = dragging !== "";
+
+  const previewBg = slide.bgImage ? "transparent"
+    : tpl.gradient ? `linear-gradient(135deg, ${slide.bgColor} 0%, #7B35D4 60%, #2A9D8F 100%)`
+    : slide.bgColor;
 
   return (
     <>
       <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.75)", zIndex: 60 }} />
-      <div style={{ position: "fixed", right: 0, top: 0, bottom: 0, width: 900, maxWidth: "99vw", background: C.surface, borderLeft: `1px solid ${C.border}`, zIndex: 61, display: "flex", flexDirection: "column", animation: "slideIn .25s ease", cursor: isDragging ? "grabbing" : "default", userSelect: isDragging ? "none" : "auto" }}>
+      <div style={{ position: "fixed", right: 0, top: 0, bottom: 0, width: "min(960px, 99vw)", background: C.surface, borderLeft: `1px solid ${C.border}`, zIndex: 61, display: "flex", flexDirection: "column", animation: "slideIn .25s ease", cursor: isDragging ? "grabbing" : "default", userSelect: isDragging ? "none" : "auto" }}>
 
         {/* Header */}
-        <div style={{ padding: "16px 22px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-          <div>
-            <div style={{ fontSize: 15, color: C.text, fontFamily: "Georgia,serif" }}>🎨 Editor de pieza</div>
-            <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>{post.red} · {post.tipo} · {post.pilar}</div>
+        <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, color: C.text, fontFamily: "Georgia,serif" }}>🎨 Editor de pieza</div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 1 }}>{post.red} · {post.tipo} · {post.pilar}</div>
           </div>
-          <button onClick={onClose} style={{ background: "transparent", border: "none", color: C.muted, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
+          {/* Carousel toggle */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif" }}>Carrusel</span>
+            <Toggle on={isCarousel} onToggle={() => setIsCarousel(v => !v)} />
+          </div>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", color: C.muted, fontSize: 20, cursor: "pointer", lineHeight: 1 }}>✕</button>
         </div>
 
+        {/* Carousel nav (if enabled) */}
+        {isCarousel && (
+          <div style={{ padding: "8px 20px", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", gap: 8, flexShrink: 0, background: C.surf2, overflowX: "auto" }}>
+            <span style={{ fontSize: 10, color: C.muted, fontFamily: "Georgia,serif", whiteSpace: "nowrap" }}>Slide</span>
+            {slides.map((sl, i) => (
+              <button key={sl.id} onClick={() => setCurSlide(i)} style={{ minWidth: 30, height: 28, borderRadius: 5, border: `1px solid ${i === curSlide ? C.accent : C.border}`, background: i === curSlide ? `${C.accent}33` : "transparent", color: i === curSlide ? C.accentLt : C.muted, fontSize: 12, cursor: "pointer", fontFamily: "Georgia,serif", flexShrink: 0 }}>{i + 1}</button>
+            ))}
+            <button onClick={addSlide} style={{ ...uploadBtnStyle, flex: "0 0 auto", width: "auto", padding: "5px 10px" }}>+ Agregar</button>
+            <button onClick={duplicateSlide} title="Duplicar slide actual" style={{ ...uploadBtnStyle, flex: "0 0 auto", width: "auto", padding: "5px 10px" }}>⧉ Duplicar</button>
+            {slides.length > 1 && <button onClick={deleteSlide} style={{ background: "transparent", border: `1px solid #E6394640`, borderRadius: 6, color: "#E63946", fontSize: 11, padding: "5px 10px", cursor: "pointer", fontFamily: "Georgia,serif", whiteSpace: "nowrap" }}>🗑 Eliminar</button>}
+            <span style={{ marginLeft: "auto", fontSize: 10, color: C.muted, whiteSpace: "nowrap", flexShrink: 0 }}>{slides.length} slides</span>
+          </div>
+        )}
+
+        {/* Body */}
         <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
           {/* ── SIDEBAR ── */}
-          <div style={{ width: 258, flexShrink: 0, overflowY: "auto", borderRight: `1px solid ${C.border}`, padding: "14px 14px 28px" }}>
+          <div style={{ width: 272, flexShrink: 0, overflowY: "auto", borderRight: `1px solid ${C.border}`, padding: "12px 13px 30px" }}>
 
-            <label style={lbl}>Plantilla</label>
+            {/* Template + Format */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginBottom: 4 }}>
               {Object.entries(DESIGN_TEMPLATES).map(([k, t]) => (
                 <button key={k} style={chipBtnS(template === k)} onClick={() => setTemplate(k)}>{t.label}</button>
               ))}
             </div>
-
-            <div style={sec}>
-              <label style={lbl}>Formato</label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
-                {Object.entries(DESIGN_FORMATS).map(([k, f]) => (
-                  <button key={k} style={chipBtnS(format === k)} onClick={() => setFormat(k)}>{f.icon} {f.label}</button>
-                ))}
-              </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginTop: 6 }}>
+              {Object.entries(DESIGN_FORMATS).map(([k, f]) => (
+                <button key={k} style={chipBtnS(format === k)} onClick={() => setFormat(k)}>{f.icon} {f.label}</button>
+              ))}
             </div>
 
-            {/* Fondo */}
-            <div style={sec}>
-              <label style={lbl}>Fondo</label>
+            {/* Background */}
+            <SideSection title="Fondo">
               <input ref={bgFileRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => handleBgFile(e.target.files?.[0])} />
-              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                <button style={{ ...uploadBtnStyle, flex: 1, justifyContent: "center" }} onClick={() => bgFileRef.current?.click()}>🖼 Subir imagen</button>
-                {bgImage && <button onClick={() => setBgImage(null)} style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 7, color: C.muted, fontSize: 11, padding: "7px 10px", cursor: "pointer" }}>✕</button>}
+              <div style={{ display: "flex", gap: 5, marginBottom: 7 }}>
+                <button style={uploadBtnStyle} onClick={() => bgFileRef.current?.click()}>🖼 Subir imagen</button>
+                {slide.bgImage && <button onClick={() => updSlide({ bgImage: null })} style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6, color: C.muted, fontSize: 11, padding: "6px 8px", cursor: "pointer" }}>✕</button>}
               </div>
-              {bgImage && (
-                <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
-                  {["cover","contain"].map(f => <button key={f} style={chipBtnS(bgFit === f)} onClick={() => setBgFit(f)}>{f}</button>)}
+              {slide.bgImage && (
+                <div style={{ display: "flex", gap: 4, marginBottom: 7 }}>
+                  {["cover","contain"].map(f => <button key={f} style={chipBtnS(slide.bgFit === f)} onClick={() => updSlide({ bgFit: f })}>{f}</button>)}
                 </div>
               )}
-              <label style={{ ...lbl, marginTop: 4 }}>Color de fondo</label>
-              <ColorInput value={bgColor} onChange={setBgColor} />
-              <label style={lbl}>Color de acento</label>
-              <ColorInput value={accColor} onChange={setAccColor} />
-            </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <div><div style={{ fontSize: 9, color: C.accentLt, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4, fontFamily: "Georgia,serif" }}>Fondo</div><ColorInput value={slide.bgColor} onChange={v => updSlide({ bgColor: v })} /></div>
+                <div><div style={{ fontSize: 9, color: C.accentLt, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4, fontFamily: "Georgia,serif" }}>Acento</div><ColorInput value={slide.accColor} onChange={v => updSlide({ accColor: v })} /></div>
+              </div>
+            </SideSection>
 
-            {/* Texto */}
-            <div style={sec}>
-              <label style={lbl}>Texto principal</label>
-              <textarea value={copy} onChange={e => setCopy(e.target.value)} rows={4} style={inp} />
-              <label style={lbl}>Fuente</label>
-              <select value={fontFamily} onChange={e => setFontFamily(e.target.value)} style={{ ...inp, appearance: "none", cursor: "pointer", resize: "none" }}>
-                {FONT_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
-              </select>
-              <label style={lbl}>Tamaño — {fontSize}px</label>
-              <input type="range" min={16} max={90} value={fontSize} onChange={e => setFontSize(parseInt(e.target.value))} style={{ width: "100%", accentColor: C.accent, marginBottom: 10 }} />
-              <label style={lbl}>Alineación</label>
-              <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
-                {[["left","←"],["center","↔"],["right","→"]].map(([v,icon]) => (
-                  <button key={v} style={alignBtnS(align === v)} onClick={() => setAlign(v)}>{icon}</button>
+            {/* Text boxes */}
+            <SideSection title="Cajas de texto">
+              {/* List of text boxes */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
+                {slide.textBoxes.map((tb, i) => (
+                  <div key={tb.id} onClick={() => setSelBoxId(tb.id)} style={{ display: "flex", alignItems: "center", gap: 5, background: selBoxId === tb.id ? `${C.accent}22` : C.surf2, border: `1px solid ${selBoxId === tb.id ? C.accent : C.border}`, borderRadius: 6, padding: "6px 8px", cursor: "pointer", transition: "all .15s" }}>
+                    <span style={{ fontSize: 10, color: selBoxId === tb.id ? C.accentLt : C.muted, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "Georgia,serif" }}>
+                      ☰ Caja {i + 1} {tb.text ? `— ${tb.text.slice(0, 18)}${tb.text.length > 18 ? "…" : ""}` : "(vacía)"}
+                    </span>
+                    {slide.textBoxes.length > 1 && (
+                      <button onClick={e => { e.stopPropagation(); setSlides(p => p.map((s, j) => j !== csRef.current ? s : { ...s, textBoxes: s.textBoxes.filter(t => t.id !== tb.id) })); if (selBoxId === tb.id) setSelBoxId(null); }} style={{ background: "transparent", border: "none", color: C.muted, cursor: "pointer", fontSize: 12, padding: "0 2px", lineHeight: 1 }}>✕</button>
+                    )}
+                  </div>
                 ))}
               </div>
-              <label style={lbl}>Color del texto</label>
-              <ColorInput value={copyColor} onChange={setCopyColor} />
-            </div>
+              <button onClick={() => { const nb = { ...makeTB("Nuevo texto", 0.074, 0.5 + slide.textBoxes.length * 0.12) }; setSlides(p => p.map((s, j) => j !== csRef.current ? s : { ...s, textBoxes: [...s.textBoxes, nb] })); setSelBoxId(nb.id); }} style={{ ...uploadBtnStyle, marginBottom: 10 }}>+ Nueva caja de texto</button>
+
+              {/* Selected box formatting */}
+              {selBox && (
+                <div style={{ background: C.surf2, border: `1px solid ${C.border}`, borderRadius: 7, padding: "10px 10px 6px" }}>
+                  <div style={{ fontSize: 9, color: C.accentLt, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6, fontFamily: "Georgia,serif" }}>Formato de caja seleccionada</div>
+                  <textarea value={selBox.text} onChange={e => updTB(selBox.id, { text: e.target.value })} rows={3} style={inp} />
+
+                  {/* Font + B/I/U */}
+                  <div style={{ display: "flex", gap: 4, marginBottom: 7, alignItems: "center" }}>
+                    <select value={selBox.fontFamily} onChange={e => updTB(selBox.id, { fontFamily: e.target.value })}
+                      style={{ flex: 1, background: C.surf3, border: `1px solid ${C.border}`, borderRadius: 5, color: C.text, fontSize: 11, padding: "4px 6px", fontFamily: "Georgia,serif", outline: "none", cursor: "pointer" }}>
+                      {FONT_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                    </select>
+                    <button style={{ ...iconBtn(selBox.bold), fontWeight: "bold" }} onClick={() => updTB(selBox.id, { bold: !selBox.bold })}>B</button>
+                    <button style={{ ...iconBtn(selBox.italic), fontStyle: "italic" }} onClick={() => updTB(selBox.id, { italic: !selBox.italic })}>I</button>
+                    <button style={{ ...iconBtn(selBox.underline), textDecoration: "underline" }} onClick={() => updTB(selBox.id, { underline: !selBox.underline })}>U</button>
+                  </div>
+
+                  {/* Size */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+                    <input type="range" min={10} max={120} value={selBox.fontSize} onChange={e => updTB(selBox.id, { fontSize: parseInt(e.target.value) })} style={{ flex: 1, accentColor: C.accent }} />
+                    <span style={{ fontSize: 11, color: C.muted, minWidth: 34, fontFamily: "Georgia,serif" }}>{selBox.fontSize}px</span>
+                  </div>
+
+                  {/* Alignment */}
+                  <div style={{ display: "flex", gap: 4, marginBottom: 7 }}>
+                    {[["left","←"],["center","↔"],["right","→"]].map(([v,icon]) => (
+                      <button key={v} style={alignBtnS(selBox.align === v)} onClick={() => updTB(selBox.id, { align: v })}>{icon}</button>
+                    ))}
+                  </div>
+
+                  {/* Color */}
+                  <div style={{ fontSize: 9, color: C.accentLt, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 4, fontFamily: "Georgia,serif" }}>Color</div>
+                  <ColorInput value={selBox.color} onChange={v => updTB(selBox.id, { color: v })} />
+                </div>
+              )}
+            </SideSection>
 
             {/* CTA */}
-            <div style={sec}>
-              <label style={lbl}>CTA</label>
-              <input value={cta} onChange={e => setCta(e.target.value)} style={{ ...inp, resize: "none" }} />
-              <label style={lbl}>Color CTA</label>
-              <ColorInput value={ctaColor} onChange={setCtaColor} />
-            </div>
+            <SideSection title="CTA" defaultOpen={false}>
+              <input value={slide.cta.text} onChange={e => updCta({ text: e.target.value })} placeholder="Llamada a la acción…" style={{ ...inp, resize: "none" }} />
+              <ColorInput value={slide.cta.color} onChange={v => updCta({ color: v })} />
+            </SideSection>
 
             {/* Hashtags */}
-            <div style={sec}>
-              <label style={lbl}>Hashtags</label>
-              <input value={hashtags} onChange={e => setHashtags(e.target.value)} style={{ ...inp, resize: "none" }} />
-              <label style={lbl}>Color hashtags</label>
-              <ColorInput value={hashColor} onChange={setHashColor} />
-            </div>
+            <SideSection title="Hashtags" defaultOpen={false}>
+              <input value={slide.hashtags.text} onChange={e => updHashtags({ text: e.target.value })} style={{ ...inp, resize: "none" }} />
+              <div style={{ display: "flex", gap: 4, marginBottom: 7 }}>
+                {[["left","←"],["center","↔"],["right","→"]].map(([v,icon]) => (
+                  <button key={v} style={alignBtnS(slide.hashtags.align === v)} onClick={() => updHashtags({ align: v })}>{icon}</button>
+                ))}
+              </div>
+              <ColorInput value={slide.hashtags.color} onChange={v => updHashtags({ color: v })} />
+            </SideSection>
 
-            {/* Etiquetas toggle */}
-            <div style={{ ...sec, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            {/* Badges */}
+            <div style={{ borderTop: `1px solid ${C.border}`, marginTop: 10, paddingTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div>
                 <div style={{ fontSize: 11, color: C.text, fontFamily: "Georgia,serif" }}>Etiquetas</div>
                 <div style={{ fontSize: 10, color: C.muted }}>Mostrar red / pilar</div>
               </div>
-              <Toggle on={showBadges} onToggle={() => setShowBadges(v => !v)} />
+              <Toggle on={slide.showBadges} onToggle={() => updSlide({ showBadges: !slide.showBadges })} />
             </div>
 
             {/* Logo */}
-            <div style={sec}>
-              <label style={lbl}>Logo</label>
+            <SideSection title="Logo" defaultOpen={!!slide.logo}>
               <input ref={logoFileRef} type="file" accept="image/png,image/svg+xml,image/jpeg,image/webp" style={{ display: "none" }} onChange={e => handleLogoFile(e.target.files?.[0])} />
-              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                <button style={{ ...uploadBtnStyle, flex: 1, justifyContent: "center" }} onClick={() => logoFileRef.current?.click()}>📁 {logo ? "Cambiar logo" : "Subir logo"}</button>
-                {logo && <button onClick={() => setLogo(null)} style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 7, color: C.muted, fontSize: 11, padding: "7px 10px", cursor: "pointer" }}>✕</button>}
+              <div style={{ display: "flex", gap: 5, marginBottom: 7 }}>
+                <button style={uploadBtnStyle} onClick={() => logoFileRef.current?.click()}>📁 {slide.logo ? "Cambiar" : "Subir logo"}</button>
+                {slide.logo && <button onClick={() => updSlide({ logo: null })} style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6, color: C.muted, fontSize: 11, padding: "6px 8px", cursor: "pointer" }}>✕</button>}
               </div>
-              {logo && (
+              {slide.logo && (
                 <>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                    <img src={logo.src} style={{ height: 28, maxWidth: 80, objectFit: "contain", borderRadius: 4, background: "#fff1", border: `1px solid ${C.border}` }} alt="logo" />
-                    <span style={{ fontSize: 10, color: C.muted, fontFamily: "Georgia,serif" }}>Arrastrá en la vista previa para mover · esquina para escalar</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 7 }}>
+                    <img src={slide.logo.src} style={{ height: 26, maxWidth: 70, objectFit: "contain", borderRadius: 4, background: "#fff1", border: `1px solid ${C.border}` }} alt="logo" />
+                    <span style={{ fontSize: 10, color: C.muted, fontFamily: "Georgia,serif" }}>Arrastrá para mover · ◢ para escalar</span>
                   </div>
-                  <label style={lbl}>Tamaño — {Math.round(logo.wF * 100)}%</label>
-                  <input type="range" min={4} max={80} value={Math.round(logo.wF * 100)} onChange={e => setLogo(l => l ? { ...l, wF: parseInt(e.target.value) / 100 } : l)} style={{ width: "100%", accentColor: C.accent }} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input type="range" min={4} max={80} value={Math.round(slide.logo.wF * 100)} onChange={e => updLogo({ wF: parseInt(e.target.value) / 100 })} style={{ flex: 1, accentColor: C.accent }} />
+                    <span style={{ fontSize: 11, color: C.muted, minWidth: 32, fontFamily: "Georgia,serif" }}>{Math.round(slide.logo.wF * 100)}%</span>
+                  </div>
                 </>
               )}
-            </div>
+            </SideSection>
           </div>
 
           {/* ── PREVIEW ── */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: C.bg, overflow: "hidden", padding: "20px" }}>
-            <div style={{ fontSize: 10, color: C.muted, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 12, fontFamily: "Georgia,serif" }}>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: C.bg, overflow: "hidden", padding: "16px" }}>
+            <div style={{ fontSize: 10, color: C.muted, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 10, fontFamily: "Georgia,serif" }}>
               Vista previa — {fmt.label} · {fmt.w}×{fmt.h}px
+              {isCarousel && <span style={{ color: C.accentLt, marginLeft: 8 }}>Slide {curSlide + 1}/{slides.length}</span>}
               {isDragging && <span style={{ color: C.accent, marginLeft: 8 }}>arrastrando…</span>}
             </div>
 
-            <div ref={previewRef} style={{ width: pw, height: ph, position: "relative", overflow: "hidden", background: previewBg, borderRadius: 8, boxShadow: "0 8px 40px rgba(0,0,0,.7)", flexShrink: 0 }}>
+            {/* Preview canvas */}
+            <div
+              ref={previewRef}
+              onClick={() => setSelBoxId(null)}
+              style={{ width: pw, height: ph, position: "relative", overflow: "hidden", background: previewBg, borderRadius: 8, boxShadow: "0 8px 40px rgba(0,0,0,.7)", flexShrink: 0 }}
+            >
+              {/* BG image layer */}
+              {slide.bgImage && <div style={{ position: "absolute", inset: 0, backgroundImage: `url(${slide.bgImage})`, backgroundSize: slide.bgFit, backgroundPosition: "center", backgroundRepeat: "no-repeat" }} />}
 
-              {bgImage && (
-                <div style={{ position: "absolute", inset: 0, backgroundImage: `url(${bgImage})`, backgroundSize: bgFit, backgroundPosition: "center", backgroundRepeat: "no-repeat" }} />
-              )}
-
-              {showBadges && (
+              {/* Badges */}
+              {slide.showBadges && (
                 <>
-                  <div style={{ position: "absolute", top: pPad, left: pPad, background: `${NET_COLOR[post.red] || accColor}28`, border: `1px solid ${NET_COLOR[post.red] || accColor}55`, borderRadius: pBadgeH / 2, height: pBadgeH, display: "flex", alignItems: "center", padding: `0 ${Math.round(12 * scale)}px`, fontSize: Math.round(13 * scale), color: NET_COLOR[post.red] || accColor, fontFamily: fontFamily, fontWeight: "bold", whiteSpace: "nowrap", pointerEvents: "none" }}>{post.red}</div>
-                  {post.pilar && <div style={{ position: "absolute", top: pPad, right: pPad, background: `${accColor}22`, border: `1px solid ${accColor}55`, borderRadius: pBadgeH / 2, height: pBadgeH, display: "flex", alignItems: "center", padding: `0 ${Math.round(10 * scale)}px`, fontSize: Math.round(11 * scale), color: accColor, fontFamily: fontFamily, whiteSpace: "nowrap", pointerEvents: "none" }}>{post.pilar}</div>}
+                  <div style={{ position: "absolute", top: pPad, left: pPad, background: `${NET_COLOR[post.red] || slide.accColor}28`, border: `1px solid ${NET_COLOR[post.red] || slide.accColor}55`, borderRadius: pBadgeH / 2, height: pBadgeH, display: "flex", alignItems: "center", padding: `0 ${Math.round(11 * scale)}px`, fontSize: Math.round(12 * scale), color: NET_COLOR[post.red] || slide.accColor, fontWeight: "bold", whiteSpace: "nowrap", pointerEvents: "none" }}>{post.red}</div>
+                  {post.pilar && <div style={{ position: "absolute", top: pPad, right: pPad, background: `${slide.accColor}22`, border: `1px solid ${slide.accColor}55`, borderRadius: pBadgeH / 2, height: pBadgeH, display: "flex", alignItems: "center", padding: `0 ${Math.round(9 * scale)}px`, fontSize: Math.round(10 * scale), color: slide.accColor, whiteSpace: "nowrap", pointerEvents: "none" }}>{post.pilar}</div>}
                 </>
               )}
 
-              {/* Text drag handle */}
-              <div
-                onMouseDown={e => { e.preventDefault(); textDrag.current = { startX: e.clientX, startY: e.clientY, startXF: textXF, startYF: textYF }; setDragging("text"); }}
-                title="Arrastrá para mover el texto"
-                style={{ position: "absolute", left: textXF * pw, top: Math.max(0, textTopPx - 16), background: C.accent, borderRadius: "4px 4px 0 0", padding: "2px 8px 1px", fontSize: 9, color: "#fff", cursor: "grab", display: "flex", alignItems: "center", gap: 3, fontFamily: "Georgia,serif", whiteSpace: "nowrap", zIndex: 10 }}>
-                ⠿ mover texto
-              </div>
+              {/* TEXT BOXES */}
+              {slide.textBoxes.map((tb) => {
+                const boxLeft = tb.x * pw;
+                const boxTop  = tb.y * ph;
+                const boxW    = tb.wF * pw;
+                const pFontSz = tb.fontSize * scale;
+                const isSel   = selBoxId === tb.id;
+                return (
+                  <div key={tb.id}>
+                    {/* Drag handle (above box) */}
+                    {isSel && (
+                      <div
+                        onMouseDown={e => { e.preventDefault(); e.stopPropagation(); dragRef.current = { startX: e.clientX, startY: e.clientY, x0: tb.x, y0: tb.y }; setDragging(`move-${tb.id}`); }}
+                        style={{ position: "absolute", left: boxLeft, top: Math.max(0, boxTop - 18), background: C.accent, borderRadius: "4px 4px 0 0", padding: "2px 8px 1px", fontSize: 9, color: "#fff", cursor: "grab", zIndex: 15, display: "flex", alignItems: "center", gap: 3, whiteSpace: "nowrap", fontFamily: "Georgia,serif" }}>
+                        ⠿ mover
+                      </div>
+                    )}
+                    {/* Text content */}
+                    <div
+                      onClick={e => { e.stopPropagation(); setSelBoxId(tb.id); }}
+                      style={{
+                        position: "absolute",
+                        left: boxLeft, top: boxTop, width: boxW,
+                        fontSize: pFontSz, fontFamily: tb.fontFamily,
+                        fontWeight: tb.bold ? "bold" : "normal",
+                        fontStyle: tb.italic ? "italic" : "normal",
+                        textDecoration: tb.underline ? "underline" : "none",
+                        color: tb.color, textAlign: tb.align,
+                        lineHeight: 1.6, wordBreak: "break-word",
+                        cursor: "pointer", zIndex: 10,
+                        outline: isSel ? `1px dashed ${C.accent}99` : "1px dashed transparent",
+                        boxSizing: "border-box",
+                      }}>
+                      {tb.text || <span style={{ opacity: 0.3, fontStyle: "italic" }}>Caja vacía…</span>}
+                    </div>
+                    {/* Resize handle (right edge) */}
+                    {isSel && (
+                      <div
+                        onMouseDown={e => { e.preventDefault(); e.stopPropagation(); dragRef.current = { startX: e.clientX, wF0: tb.wF }; setDragging(`resize-${tb.id}`); }}
+                        style={{ position: "absolute", left: boxLeft + boxW - 6, top: boxTop + Math.max(4, (pFontSz * 1.6) / 2 - 12), width: 12, height: 24, background: C.accent, borderRadius: 3, cursor: "ew-resize", zIndex: 16 }} />
+                    )}
+                  </div>
+                );
+              })}
 
-              {/* Copy text */}
-              <div style={{ position: "absolute", left: textXF * pw, top: textTopPx, right: pPad, fontSize: pFont, color: copyColor, fontFamily: fontFamily, lineHeight: `${pLineH}px`, textAlign: align, wordBreak: "break-word", pointerEvents: "none", zIndex: 5 }}>{copy}</div>
-
-              {/* Accent line */}
-              <div style={{ position: "absolute", top: accentTopPx, left: align === "center" ? "50%" : align === "right" ? undefined : textXF * pw, right: align === "right" ? pPad : undefined, transform: align === "center" ? "translateX(-50%)" : undefined, width: Math.round(60 * scale), height: Math.round(3 * scale), background: accColor, borderRadius: 2, pointerEvents: "none", zIndex: 5 }} />
+              {/* Accent line (after first text box) */}
+              {slide.textBoxes.length > 0 && (() => {
+                const tb0 = slide.textBoxes[0];
+                const lineH = tb0.fontSize * 1.6 * scale;
+                const approxLines = Math.max(1, Math.ceil(tb0.text.length / Math.max(1, Math.floor((tb0.wF * pw) / (tb0.fontSize * scale * 0.55)))));
+                const afterY = tb0.y * ph + approxLines * lineH + Math.round(14 * scale);
+                const accentW = Math.round(60 * scale);
+                const ax = tb0.align === "center" ? tb0.x * pw + (tb0.wF * pw) / 2 - accentW / 2
+                         : tb0.align === "right"  ? tb0.x * pw + tb0.wF * pw - accentW
+                         : tb0.x * pw;
+                return <div style={{ position: "absolute", top: afterY, left: ax, width: accentW, height: Math.round(3 * scale), background: slide.accColor, borderRadius: 2, pointerEvents: "none", zIndex: 5 }} />;
+              })()}
 
               {/* CTA */}
-              {cta && <div style={{ position: "absolute", top: ctaTopPx, left: textXF * pw, right: pPad, fontSize: Math.round(fontSize * 0.42 * scale), color: ctaColor, fontFamily: fontFamily, textAlign: align, pointerEvents: "none", zIndex: 5 }}>{cta}</div>}
+              {slide.cta.text && (
+                <div style={{ position: "absolute", bottom: Math.round(ph * 0.17), left: pPad, right: pPad, fontSize: Math.round(22 * scale), color: slide.cta.color, fontFamily: "Georgia, serif", pointerEvents: "none", zIndex: 5 }}>{slide.cta.text}</div>
+              )}
 
               {/* Hashtags */}
-              {hashtags && <div style={{ position: "absolute", bottom: pPad, left: pPad, right: pPad, fontSize: Math.round(fontSize * 0.34 * scale), color: hashColor, fontFamily: fontFamily, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", pointerEvents: "none", zIndex: 5 }}>{hashtags}</div>}
+              {slide.hashtags.text && (
+                <div style={{ position: "absolute", bottom: pPad, left: pPad, right: pPad, fontSize: Math.round(16 * scale), color: slide.hashtags.color, fontFamily: "Georgia, serif", textAlign: slide.hashtags.align, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", pointerEvents: "none", zIndex: 5 }}>{slide.hashtags.text}</div>
+              )}
 
               {/* Logo */}
-              {logo && (
+              {slide.logo && (
                 <div
-                  onMouseDown={e => { e.preventDefault(); e.stopPropagation(); logoDrag.current = { startX: e.clientX, startY: e.clientY, startXF: logo.xF, startYF: logo.yF }; setDragging("logo"); }}
-                  style={{ position: "absolute", left: logo.xF * pw, top: logo.yF * ph, width: logo.wF * pw, cursor: dragging === "logo" ? "grabbing" : "grab", zIndex: 20 }}>
-                  <img src={logo.src} style={{ width: "100%", display: "block", pointerEvents: "none" }} alt="logo" />
-                  <div style={{ position: "absolute", inset: -1, border: `1px dashed ${C.accent}88`, borderRadius: 2, pointerEvents: "none" }} />
-                  <div
-                    onMouseDown={e => { e.preventDefault(); e.stopPropagation(); logoResize.current = { startX: e.clientX, startWF: logo.wF }; setDragging("resize"); }}
-                    style={{ position: "absolute", right: -5, bottom: -5, width: 12, height: 12, background: C.accent, borderRadius: 2, cursor: "nwse-resize", zIndex: 21 }} />
+                  onMouseDown={e => { e.preventDefault(); e.stopPropagation(); dragRef.current = { startX: e.clientX, startY: e.clientY, xF0: slide.logo.xF, yF0: slide.logo.yF }; setDragging("logo-move"); }}
+                  style={{ position: "absolute", left: slide.logo.xF * pw, top: slide.logo.yF * ph, width: slide.logo.wF * pw, cursor: isDragging ? "grabbing" : "grab", zIndex: 20 }}>
+                  <img src={slide.logo.src} style={{ width: "100%", display: "block", pointerEvents: "none" }} alt="logo" />
+                  <div style={{ position: "absolute", inset: -1, border: `1px dashed ${C.accent}77`, borderRadius: 2, pointerEvents: "none" }} />
+                  <div onMouseDown={e => { e.preventDefault(); e.stopPropagation(); dragRef.current = { startX: e.clientX, wF0: slide.logo.wF }; setDragging("logo-resize"); }} style={{ position: "absolute", right: -5, bottom: -5, width: 12, height: 12, background: C.accent, borderRadius: 2, cursor: "nwse-resize", zIndex: 21 }} />
                 </div>
               )}
             </div>
 
-            <div style={{ fontSize: 10, color: C.muted, marginTop: 10, fontFamily: "Georgia,serif", textAlign: "center" }}>
-              {pw}×{ph}px preview → exporta {fmt.w}×{fmt.h}px
-              {logo && <span style={{ color: C.accentLt, marginLeft: 8 }}>· Logo: arrastrá para mover, esquina ◢ para escalar</span>}
+            <div style={{ fontSize: 10, color: C.muted, marginTop: 8, fontFamily: "Georgia,serif", textAlign: "center" }}>
+              {pw}×{ph}px preview → exporta {fmt.w}×{fmt.h}px · Clic en una caja de texto para editar
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div style={{ padding: "14px 22px", borderTop: `1px solid ${C.border}`, display: "flex", gap: 12, alignItems: "center", flexShrink: 0, background: C.surface }}>
-          <button onClick={handleDownload} disabled={downloading} style={{ background: downloading ? C.surf3 : C.accent, border: "none", borderRadius: 9, color: C.text, fontSize: 14, padding: "12px 28px", cursor: downloading ? "not-allowed" : "pointer", fontFamily: "Georgia,serif", transition: "background .2s", display: "flex", alignItems: "center", gap: 8 }}>
-            {downloading ? (<>{[0,1,2].map(i => <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: C.accentLt, display: "inline-block", animation: "bounce 1.2s infinite", animationDelay: `${i * .2}s` }} />)}Generando…</>) : "⬇ Descargar PNG"}
+        <div style={{ padding: "12px 20px", borderTop: `1px solid ${C.border}`, display: "flex", gap: 10, alignItems: "center", flexShrink: 0, background: C.surface }}>
+          <button onClick={() => handleDownload()} disabled={downloading} style={{ background: downloading ? C.surf3 : C.accent, border: "none", borderRadius: 9, color: C.text, fontSize: 14, padding: "11px 24px", cursor: downloading ? "not-allowed" : "pointer", fontFamily: "Georgia,serif", transition: "background .2s", display: "flex", alignItems: "center", gap: 8 }}>
+            {downloading ? (<>{[0,1,2].map(i => <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: C.accentLt, display: "inline-block", animation: "bounce 1.2s infinite", animationDelay: `${i * .2}s` }} />)}Generando…</>) : `⬇ Descargar PNG${isCarousel ? ` (slide ${curSlide + 1})` : ""}`}
           </button>
-          <div style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif" }}>{fmt.w}×{fmt.h}px · PNG listo para publicar</div>
-          <button onClick={onClose} style={{ marginLeft: "auto", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 13, padding: "9px 18px", cursor: "pointer", fontFamily: "Georgia,serif" }}>Cerrar</button>
+          {isCarousel && slides.length > 1 && (
+            <button onClick={handleDownloadAll} disabled={downloading} style={{ background: "transparent", border: `1px solid ${C.teal}`, borderRadius: 9, color: C.teal, fontSize: 13, padding: "11px 20px", cursor: downloading ? "not-allowed" : "pointer", fontFamily: "Georgia,serif" }}>⬇⬇ Descargar todos ({slides.length})</button>
+          )}
+          <div style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif" }}>{fmt.w}×{fmt.h}px · PNG</div>
+          <button onClick={onClose} style={{ marginLeft: "auto", background: "transparent", border: `1px solid ${C.border}`, borderRadius: 8, color: C.muted, fontSize: 13, padding: "9px 16px", cursor: "pointer", fontFamily: "Georgia,serif" }}>Cerrar</button>
         </div>
       </div>
     </>
@@ -1440,6 +1659,7 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
   });
 
   const GLOBAL_CSS = `
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,700;1,400;1,700&display=swap');
     *{box-sizing:border-box}
     input::placeholder,textarea::placeholder{color:${C.muted}66}
     input:focus,textarea:focus,select:focus{border-color:${C.accent}!important}
