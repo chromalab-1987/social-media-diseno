@@ -1090,57 +1090,147 @@ const REEL_FONTS = [
   { label: "Impact",     value: "Impact, fantasy" },
   { label: "Courier",    value: "'Courier New', monospace" },
 ];
-
-/* BASE_W: all sizes authored at this width, scaled at draw time */
 const REEL_BASE_W = 1080;
 
+/* ── Transition types ── */
+const TRANS_TYPES = [
+  { id: "none",      label: "Sin transición" },
+  { id: "fade",      label: "Fade" },
+  { id: "slide-l",   label: "Slide ←" },
+  { id: "slide-r",   label: "Slide →" },
+  { id: "slide-u",   label: "Slide ↑" },
+  { id: "zoom",      label: "Zoom" },
+  { id: "wipe",      label: "Wipe" },
+];
+
+/* ── Icon library (SVG paths, viewBox 0 0 100 100) ── */
+const REEL_ICONS = {
+  "arr-r":  `<path d="M15 50h70M62 27l23 23-23 23" stroke="currentColor" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  "arr-l":  `<path d="M85 50H15M38 27L15 50l23 23" stroke="currentColor" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  "arr-u":  `<path d="M50 85V15M27 38L50 15l23 23" stroke="currentColor" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  "arr-d":  `<path d="M50 15v70M27 62l23 23 23-23" stroke="currentColor" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  "arr-rr": `<path d="M8 50h38M33 32l20 18-20 18M54 50h38M71 32l20 18-20 18" stroke="currentColor" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  "arr-curl":`<path d="M20 72c0-32 52-52 60-12M68 52l14-2 2-14" stroke="currentColor" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  "check":  `<path d="M12 52l26 26 50-50" stroke="currentColor" stroke-width="11" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  "xmark":  `<path d="M20 20l60 60M80 20L20 80" stroke="currentColor" stroke-width="11" fill="none" stroke-linecap="round"/>`,
+  "star":   `<polygon points="50,8 61,35 90,35 68,54 76,82 50,64 24,82 32,54 10,35 39,35" fill="currentColor"/>`,
+  "heart":  `<path d="M50 82S12 57 12 30a22 22 0 0138 0 22 22 0 0138 0C88 57 50 82 50 82z" fill="currentColor"/>`,
+  "lightning":`<polygon points="58,8 28,52 50,52 42,92 72,48 50,48" fill="currentColor"/>`,
+  "diamond":`<polygon points="50,8 88,50 50,92 12,50" fill="currentColor"/>`,
+  "trend":  `<path d="M8 78l28-28 20 15 36-42M74 23h20v20" stroke="currentColor" stroke-width="9" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+  "target": `<circle cx="50" cy="50" r="38" stroke="currentColor" stroke-width="8" fill="none"/><circle cx="50" cy="50" r="22" stroke="currentColor" stroke-width="8" fill="none"/><circle cx="50" cy="50" r="6" fill="currentColor"/>`,
+  "rocket": `<path d="M50 8c12 0 28 10 28 30v14l10 22H12l10-22V38C22 18 38 8 50 8zM36 74v12a14 14 0 0028 0V74" fill="currentColor"/>`,
+  "sparkle":`<path d="M50 5l7 37 37 7-37 7-7 37-7-37-37-7 37-7z" fill="currentColor"/><path d="M82 22l4 16 16 4-16 4-4 16-4-16-16-4 16-4z" fill="currentColor" opacity="0.55"/><path d="M18 60l3 12 12 3-12 3-3 12-3-12-12-3 12-3z" fill="currentColor" opacity="0.45"/>`,
+  "fire":   `<path d="M50 90c-22 0-32-18-22-34-2 8 4 14 8 16-4-16 8-28 10-42 8 10 8 22 2 32 14-10 18-28 10-44 10 10 20 35 8 55 8-4 14-14 12-26C92 65 80 90 50 90z" fill="currentColor"/>`,
+  "scale":  `<path d="M50 20v60M20 80h60M28 44l22-14 22 14" stroke="currentColor" stroke-width="8" fill="none" stroke-linecap="round"/><path d="M18 68a16 16 0 0020 0 16 16 0 00-20 0zM62 68a16 16 0 0020 0 16 16 0 00-20 0z" fill="currentColor"/>`,
+  "circle": `<circle cx="50" cy="50" r="40" stroke="currentColor" stroke-width="10" fill="none"/>`,
+  "like":   `<path d="M28 88V46l16-6 18-30a10 10 0 0118 8v22h18a10 10 0 010 20l-6 24a10 10 0 01-10 4H38a10 10 0 01-10-10zM18 44H8v44h10z" fill="currentColor"/>`,
+};
+const REEL_ICON_KEYS = Object.keys(REEL_ICONS);
+
+/* ── Emoji palette ── */
+const REEL_EMOJIS = [
+  "➡️","⬅️","⬆️","⬇️","↗️","↙️","🔄","↩️",
+  "🔥","⭐","💥","✨","💎","🏆","🎯","🚀",
+  "👉","👈","👆","👇","👍","💪","🤌","🙌",
+  "📈","💰","💡","🔑","📱","💻","🎁","📊",
+  "🌟","⚡","🌊","☀️","🌈","❄️","🍀","🎉",
+  "❤️","😍","🤩","💯","✅","⚠️","🎬","🎶",
+];
+
+/* ── Icon image cache ── */
+const _iconCache = {};
+function getIconImg(key, color) {
+  const cacheKey = key + color;
+  if (_iconCache[cacheKey]) return _iconCache[cacheKey];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">${REEL_ICONS[key].replace(/currentColor/g, color)}</svg>`;
+  const img = new Image();
+  img.src = "data:image/svg+xml;base64," + btoa(svg);
+  _iconCache[cacheKey] = img;
+  return img;
+}
+
+/* ── GIF decoder (lazy-loads omggif from CDN) ── */
+async function decodeGif(arrayBuffer) {
+  if (!window.GifReader) {
+    await new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/omggif/1.0.10/omggif.min.js";
+      s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+  const reader = new window.GifReader(new Uint8Array(arrayBuffer));
+  const W = reader.width, H = reader.height;
+  const frames = [], delays = [];
+  for (let i = 0; i < reader.numFrames(); i++) {
+    const fc = document.createElement("canvas");
+    fc.width = W; fc.height = H;
+    const fctx = fc.getContext("2d");
+    const imgData = fctx.createImageData(W, H);
+    reader.decodeAndBlitFrameRGBA(i, imgData.data);
+    fctx.putImageData(imgData, 0, 0);
+    frames.push(fc);
+    delays.push(Math.max(20, (reader.frameInfo(i).delay || 10) * 10));
+  }
+  return { frames, delays, w: W, h: H, ar: H / W };
+}
+
+function getGifFrame(el, t) {
+  if (!el.frames?.length) return null;
+  let elapsed = (t * 1000) % el.totalDuration;
+  let acc = 0;
+  for (let i = 0; i < el.delays.length; i++) {
+    acc += el.delays[i];
+    if (elapsed < acc) return el.frames[i];
+  }
+  return el.frames[el.frames.length - 1];
+}
+
+/* ── Data factories ── */
 const makeTBReel = (text = "", xF = 0.07, yF = 0.35) => ({
   id: `rtb${Date.now()}${Math.random().toString(36).slice(2,5)}`,
   text, xF, yF, wF: 0.86,
-  fontFamily: "Montserrat, sans-serif",
-  fontSize: 52,   /* at REEL_BASE_W */
-  align: "center",
-  color: "#FFFFFF",
+  fontFamily: "Montserrat, sans-serif", fontSize: 52,
+  align: "center", color: "#FFFFFF",
   bold: true, italic: false, underline: false,
+});
+
+const makeElement = (type, extra = {}) => ({
+  id: `el${Date.now()}${Math.random().toString(36).slice(2,5)}`,
+  type, xF: 0.35, yF: 0.15, wF: 0.3, ar: 1,
+  ...extra,
 });
 
 const makeScene = (label = "ESCENA", text = "") => ({
   id: `sc${Date.now()}${Math.random().toString(36).slice(2,5)}`,
   label,
   dur: 6,
+  transIn: { type: "fade", duration: 0.4 },
   bgType: "gradient",
   bgColor: "#0C0C0F", bgColor2: "#7B35D4", bgAngle: 135,
   bgImage: null, bgFit: "cover",
   showLabel: true, labelColor: "#9F5FF0",
-  logo: null,   /* { src, xF, yF, wF, ar } */
+  logo: null,
   textBoxes: [makeTBReel(text)],
+  elements: [],
 });
 
-function parseReelScript(raw) {
-  const rx = /(GANCHO|ESCENA\s*\d+|CTA):\s*([^\n]+(?:\n(?!GANCHO:|ESCENA|CTA:)[^\n]+)*)/gi;
-  const out = []; let m;
-  while ((m = rx.exec(raw)) !== null)
-    out.push({ label: m[1].trim().toUpperCase(), text: m[2].replace(/\n/g," ").trim() });
-  return out.length ? out : [{ label: "CONTENIDO", text: raw.trim() }];
-}
-
-/* ── Shared canvas draw ── all sizes authored at REEL_BASE_W, scaled by W */
+/* ── Draw a single scene frame (W/H = actual canvas size) ── */
 function drawReelFrame(ctx, W, H, scene, t, alpha, bgImgCache) {
-  const sc = W / REEL_BASE_W;   /* scale factor */
+  const sc = W / REEL_BASE_W;
 
   /* Background */
   if (scene.bgType === "image" && bgImgCache[scene.bgImage]) {
     const img = bgImgCache[scene.bgImage];
-    if (scene.bgFit === "cover") {
-      const s = Math.max(W/img.width, H/img.height);
-      ctx.drawImage(img, (W-img.width*s)/2, (H-img.height*s)/2, img.width*s, img.height*s);
-    } else ctx.drawImage(img, 0, 0, W, H);
+    const s = Math.max(W / img.width, H / img.height);
+    ctx.drawImage(img, (W - img.width*s)/2, (H - img.height*s)/2, img.width*s, img.height*s);
     ctx.fillStyle = "rgba(0,0,0,0.42)"; ctx.fillRect(0, 0, W, H);
   } else if (scene.bgType === "gradient") {
-    const ang = (scene.bgAngle||135) * Math.PI/180;
+    const ang = (scene.bgAngle || 135) * Math.PI / 180;
     const grad = ctx.createLinearGradient(
-      W/2-Math.cos(ang)*W, H/2-Math.sin(ang)*H,
-      W/2+Math.cos(ang)*W, H/2+Math.sin(ang)*H
+      W/2 - Math.cos(ang)*W, H/2 - Math.sin(ang)*H,
+      W/2 + Math.cos(ang)*W, H/2 + Math.sin(ang)*H
     );
     grad.addColorStop(0, scene.bgColor); grad.addColorStop(1, scene.bgColor2);
     ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
@@ -1148,28 +1238,26 @@ function drawReelFrame(ctx, W, H, scene, t, alpha, bgImgCache) {
     ctx.fillStyle = scene.bgColor; ctx.fillRect(0, 0, W, H);
   }
 
-  /* Animated orb */
+  /* Orb */
   const ox = W*0.5 + Math.sin(t*0.4)*W*0.15, oy = H*0.45 + Math.cos(t*0.28)*H*0.08;
   const orb = ctx.createRadialGradient(ox,oy,0,ox,oy,W*0.6);
   orb.addColorStop(0,"rgba(123,53,212,.16)"); orb.addColorStop(0.5,"rgba(42,157,143,.05)"); orb.addColorStop(1,"rgba(0,0,0,0)");
-  ctx.fillStyle = orb; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = orb; ctx.fillRect(0,0,W,H);
 
-  const slideY = alpha < 1 ? (1-alpha)*H*0.04 : 0;
+  const slideY = alpha < 1 ? (1-alpha)*H*0.035 : 0;
   ctx.save(); ctx.globalAlpha = alpha;
 
-  /* Label pill */
+  /* Label */
   if (scene.showLabel) {
     ctx.font = `bold ${Math.round(18*sc)}px monospace`;
     ctx.textBaseline = "middle"; ctx.textAlign = "center";
     const lW = ctx.measureText(scene.label).width + 30*sc;
     const lH = 34*sc, lY = H*0.22, lX = W/2 - lW/2;
-    ctx.fillStyle = `${scene.labelColor}22`;
-    ctx.strokeStyle = `${scene.labelColor}88`; ctx.lineWidth = 1;
-    if (ctx.roundRect) ctx.roundRect(lX,lY,lW,lH,lH/2);
-    else ctx.rect(lX,lY,lW,lH);
+    ctx.fillStyle = scene.labelColor + "22";
+    ctx.strokeStyle = scene.labelColor + "88"; ctx.lineWidth = 1;
+    if (ctx.roundRect) ctx.roundRect(lX,lY,lW,lH,lH/2); else ctx.rect(lX,lY,lW,lH);
     ctx.fill(); ctx.stroke();
-    ctx.fillStyle = scene.labelColor;
-    ctx.fillText(scene.label, W/2, lY+lH/2);
+    ctx.fillStyle = scene.labelColor; ctx.fillText(scene.label, W/2, lY+lH/2);
     ctx.globalAlpha = alpha*0.25; ctx.strokeStyle = scene.labelColor; ctx.lineWidth = 0.6;
     ctx.beginPath(); ctx.moveTo(W*0.25,lY+lH+8*sc); ctx.lineTo(W*0.75,lY+lH+8*sc); ctx.stroke();
     ctx.globalAlpha = alpha;
@@ -1183,111 +1271,174 @@ function drawReelFrame(ctx, W, H, scene, t, alpha, bgImgCache) {
     ctx.textAlign = tb.align; ctx.textBaseline = "top";
     ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 14*sc;
     const tx = tb.xF*W, ty = tb.yF*H + slideY, tW = tb.wF*W;
-    const refX = tb.align==="center" ? tx+tW/2 : tb.align==="right" ? tx+tW : tx;
+    const refX = tb.align==="center"?tx+tW/2:tb.align==="right"?tx+tW:tx;
     const lH2 = tb.fontSize*1.55*sc;
-    /* word wrap */
     const words = tb.text.split(" "); let line=""; const lines=[];
     for (const w of words) {
       const test = line?line+" "+w:w;
-      if (ctx.measureText(test).width > tW && line) { lines.push(line); line=w; } else line=test;
+      if (ctx.measureText(test).width>tW && line){lines.push(line);line=w;}else line=test;
     }
     if (line) lines.push(line);
-    lines.forEach((l,i) => {
-      const ly = ty + i*lH2;
-      ctx.fillText(l, refX, ly);
-      if (tb.underline) {
-        const tw2 = ctx.measureText(l).width;
-        const ux = tb.align==="center"?refX-tw2/2:tb.align==="right"?refX-tw2:refX;
-        ctx.shadowBlur=0; ctx.fillRect(ux, ly+Math.round(tb.fontSize*sc)+2, tw2, Math.max(1, Math.round(tb.fontSize*sc*0.06)));
-      }
+    lines.forEach((l,i)=>{
+      const ly=ty+i*lH2; ctx.fillText(l,refX,ly);
+      if(tb.underline){const tw2=ctx.measureText(l).width;const ux=tb.align==="center"?refX-tw2/2:tb.align==="right"?refX-tw2:refX;ctx.shadowBlur=0;ctx.fillRect(ux,ly+Math.round(tb.fontSize*sc)+2,tw2,Math.max(1,Math.round(tb.fontSize*sc*0.06)));}
     });
-    ctx.shadowBlur = 0;
+    ctx.shadowBlur=0;
+  }
+
+  /* Elements (icons, emojis, gifs) */
+  for (const el of scene.elements) {
+    const ex=el.xF*W, ey=el.yF*H, ew=el.wF*W, eh=ew*el.ar;
+    ctx.save();
+    if (el.type==="emoji") {
+      ctx.font = `${Math.round(el.fontSize*sc)}px serif`;
+      ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText(el.char, ex+ew/2, ey+eh/2);
+    } else if (el.type==="icon") {
+      const img = getIconImg(el.iconKey, el.color||"#FFFFFF");
+      if (img.complete) ctx.drawImage(img, ex, ey, ew, eh);
+    } else if (el.type==="gif") {
+      const frame = getGifFrame(el, t);
+      if (frame) ctx.drawImage(frame, ex, ey, ew, eh);
+    }
+    ctx.restore();
   }
 
   /* Logo */
   if (scene.logo && bgImgCache[scene.logo.src]) {
-    const lImg = bgImgCache[scene.logo.src];
-    const lw = scene.logo.wF*W, lh = lw*scene.logo.ar;
+    const lImg=bgImgCache[scene.logo.src];
+    const lw=scene.logo.wF*W, lh=lw*scene.logo.ar;
     ctx.drawImage(lImg, scene.logo.xF*W, scene.logo.yF*H, lw, lh);
   }
 
   ctx.restore();
 }
 
-/* wrap text for canvas returning lines */
-function reelCanvasWrap(ctx, text, maxW) {
-  const words = text.split(" "); let line=""; const lines=[];
-  for (const w of words) {
-    const t = line?line+" "+w:w;
-    if (ctx.measureText(t).width > maxW && line) { lines.push(line); line=w; } else line=t;
+/* ── Draw transition between two scenes ── */
+function drawTransition(ctx, W, H, fromScene, toScene, progress, transType, t, bgImgCache) {
+  const eased = progress < 0.5
+    ? 2*progress*progress
+    : 1 - Math.pow(-2*progress+2,2)/2; /* ease-in-out */
+
+  if (transType === "fade") {
+    drawReelFrame(ctx, W, H, fromScene, t, 1, bgImgCache);
+    ctx.save(); ctx.globalAlpha = eased;
+    drawReelFrame(ctx, W, H, toScene, t, 1, bgImgCache);
+    ctx.restore();
+  } else if (transType === "slide-l") {
+    ctx.save(); ctx.beginPath(); ctx.rect(0,0,W*(1-eased),H); ctx.clip();
+    ctx.translate(-W*eased,0); drawReelFrame(ctx,W,H,fromScene,t,1,bgImgCache); ctx.restore();
+    ctx.save(); ctx.beginPath(); ctx.rect(W*(1-eased),0,W*eased,H); ctx.clip();
+    ctx.translate(W*(1-eased),0); drawReelFrame(ctx,W,H,toScene,t,1,bgImgCache); ctx.restore();
+  } else if (transType === "slide-r") {
+    ctx.save(); ctx.beginPath(); ctx.rect(W*eased,0,W*(1-eased),H); ctx.clip();
+    ctx.translate(W*eased,0); drawReelFrame(ctx,W,H,fromScene,t,1,bgImgCache); ctx.restore();
+    ctx.save(); ctx.beginPath(); ctx.rect(0,0,W*eased,H); ctx.clip();
+    ctx.translate(-(W-W*eased),0); drawReelFrame(ctx,W,H,toScene,t,1,bgImgCache); ctx.restore();
+  } else if (transType === "slide-u") {
+    ctx.save(); ctx.beginPath(); ctx.rect(0,0,W,H*(1-eased)); ctx.clip();
+    ctx.translate(0,-H*eased); drawReelFrame(ctx,W,H,fromScene,t,1,bgImgCache); ctx.restore();
+    ctx.save(); ctx.beginPath(); ctx.rect(0,H*(1-eased),W,H*eased); ctx.clip();
+    ctx.translate(0,H*(1-eased)); drawReelFrame(ctx,W,H,toScene,t,1,bgImgCache); ctx.restore();
+  } else if (transType === "zoom") {
+    drawReelFrame(ctx, W, H, fromScene, t, 1-eased, bgImgCache);
+    ctx.save();
+    const s = 0.82 + eased*0.18;
+    ctx.translate(W/2,H/2); ctx.scale(s,s); ctx.translate(-W/2,-H/2);
+    ctx.globalAlpha = eased;
+    drawReelFrame(ctx,W,H,toScene,t,1,bgImgCache);
+    ctx.restore();
+  } else if (transType === "wipe") {
+    drawReelFrame(ctx, W, H, fromScene, t, 1, bgImgCache);
+    ctx.save(); ctx.beginPath(); ctx.rect(0,0,W*eased,H); ctx.clip();
+    drawReelFrame(ctx,W,H,toScene,t,1,bgImgCache); ctx.restore();
+  } else {
+    drawReelFrame(ctx, W, H, fromScene, t, 1-progress, bgImgCache);
+    ctx.save(); ctx.globalAlpha = progress;
+    drawReelFrame(ctx,W,H,toScene,t,1,bgImgCache); ctx.restore();
   }
-  if (line) lines.push(line); return lines;
+}
+
+/* ── Build render timeline (scenes + transition slots) ── */
+function buildTimeline(scenes, fps) {
+  const slots = [];
+  scenes.forEach((s, i) => {
+    if (i > 0) {
+      const trans = s.transIn;
+      if (trans && trans.type !== "none" && trans.duration > 0) {
+        slots.push({ type: "trans", from: scenes[i-1], to: s, transType: trans.type, frames: Math.round(trans.duration * fps) });
+      }
+    }
+    slots.push({ type: "scene", scene: s, frames: Math.round(s.dur * fps) });
+  });
+  return slots;
 }
 
 function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
-  const [step,      setStep]      = useState(1);
-  const [platform,  setPlatform]  = useState("instagram");
-  const [duration,  setDuration]  = useState(30);
-  const [scenes,    setScenes]    = useState([]);
-  const [selScene,  setSelScene]  = useState(0);
-  const [selBoxId,  setSelBoxId]  = useState(null);   /* "__logo__" | tb.id | null */
-  const [genLoading,setGenLoading]= useState(false);
-  const [genError,  setGenError]  = useState("");
-  const [rendering, setRendering] = useState(false);
-  const [progress,  setProgress]  = useState(0);
-  const [videoB64,  setVideoB64]  = useState(null);   /* base64 data URL for saving */
-  const [videoBlob, setVideoBlob] = useState(null);
-  const [saving,    setSaving]    = useState(false);
-  const [dragging,  setDragging]  = useState("");      /* "move-{id}" | "resize-{id}" | "logo-move" | "logo-resize" */
+  const [step,       setStep]       = useState(1);
+  const [platform,   setPlatform]   = useState("instagram");
+  const [duration,   setDuration]   = useState(30);
+  const [scenes,     setScenes]     = useState([]);
+  const [selScene,   setSelScene]   = useState(0);
+  const [selElemId,  setSelElemId]  = useState(null); /* tb id | "__logo__" | el id | null */
+  const [elemTab,    setElemTab]    = useState("icons"); /* "icons"|"emoji"|"gif" */
+  const [iconColor,  setIconColor]  = useState("#FFFFFF");
+  const [genLoading, setGenLoading] = useState(false);
+  const [genError,   setGenError]   = useState("");
+  const [rendering,  setRendering]  = useState(false);
+  const [progress,   setProgress]   = useState(0);
+  const [videoBlob,  setVideoBlob]  = useState(null);
+  const [videoB64,   setVideoB64]   = useState(null);
+  const [saving,     setSaving]     = useState(false);
+  const [dragging,   setDragging]   = useState("");
 
-  const previewCanvasRef = useRef(null);
-  const renderCanvasRef  = useRef(null);
-  const animRaf          = useRef(null);
-  const recRaf           = useRef(null);
-  const dragRef          = useRef(null);
-  const bgImgCache       = useRef({});
-  const bgFileRefs       = useRef({});
-  const logoFileRef      = useRef(null);
-  const sceneRef         = useRef(null); /* live ref for anim loop */
-  const animT            = useRef(0);
+  const previewRef  = useRef(null);
+  const renderRef   = useRef(null);
+  const animRaf     = useRef(null);
+  const recRaf      = useRef(null);
+  const dragRef     = useRef(null);
+  const bgCache     = useRef({});
+  const bgFileRefs  = useRef({});
+  const logoFileRef = useRef(null);
+  const gifFileRef  = useRef(null);
+  const sceneRef    = useRef(null);
+  const animT       = useRef(0);
+  const csRef       = useRef(0);
 
-  const plt   = REEL_PLATFORMS.find(p => p.id === platform) || REEL_PLATFORMS[0];
-  const slide = scenes[selScene] || null;
-  const sel   = slide;
+  const plt  = REEL_PLATFORMS.find(p => p.id === platform) || REEL_PLATFORMS[0];
+  const sel  = scenes[selScene] || null;
 
-  /* preview dimensions — fit in 420×520 box maintaining aspect ratio */
-  const PREV_MAX_W = 380, PREV_MAX_H = 520;
+  /* preview canvas dimensions */
+  const PREV_MAX_W = 340, PREV_MAX_H = 500;
   const aspect = plt.h / plt.w;
-  const PREV_W = aspect >= 1
-    ? Math.round(PREV_MAX_H / aspect)    /* portrait: height-constrained */
-    : PREV_MAX_W;                        /* landscape/square: width-constrained */
-  const PREV_H = aspect >= 1
-    ? PREV_MAX_H
-    : Math.round(PREV_MAX_W * aspect);
-
-  /* scale factor for preview: all authored sizes scale from REEL_BASE_W */
+  const PREV_W = aspect >= 1 ? Math.round(PREV_MAX_H / aspect) : PREV_MAX_W;
+  const PREV_H = aspect >= 1 ? PREV_MAX_H : Math.round(PREV_MAX_W * aspect);
   const previewSc = PREV_W / REEL_BASE_W;
 
-  /* ── scene mutators ── */
-  const csRef = useRef(0);
   useEffect(() => { csRef.current = selScene; }, [selScene]);
+  useEffect(() => { sceneRef.current = sel; }, [sel]);
 
-  const updScene  = (id, ch) => setScenes(p => p.map(s => s.id===id ? {...s,...ch} : s));
-  const updTB     = (scId, tbId, ch) => setScenes(p => p.map(s => s.id!==scId ? s : {
+  /* ── scene/element mutators ── */
+  const updScene = (id, ch) => setScenes(p => p.map(s => s.id===id ? {...s,...ch} : s));
+  const updTB    = (scId, tbId, ch) => setScenes(p => p.map(s => s.id!==scId ? s : {
     ...s, textBoxes: s.textBoxes.map(tb => tb.id===tbId ? {...tb,...ch} : tb)
   }));
-  const updLogo   = (scId, ch) => setScenes(p => p.map(s => s.id!==scId ? s : {
+  const updEl    = (scId, elId, ch) => setScenes(p => p.map(s => s.id!==scId ? s : {
+    ...s, elements: s.elements.map(el => el.id===elId ? {...el,...ch} : el)
+  }));
+  const updLogo  = (scId, ch) => setScenes(p => p.map(s => s.id!==scId ? s : {
     ...s, logo: s.logo ? {...s.logo,...ch} : null
   }));
 
-  const selTB  = sel?.textBoxes?.find(tb => tb.id === selBoxId) || null;
-  const selIsLogo = selBoxId === "__logo__";
+  const selTB    = sel?.textBoxes?.find(tb => tb.id === selElemId) || null;
+  const selEl    = sel?.elements?.find(el => el.id === selElemId) || null;
+  const selIsLogo = selElemId === "__logo__";
 
   /* ── image cache ── */
   const cacheImg = (src) => {
-    if (!src || bgImgCache.current[src]) return;
+    if (!src || bgCache.current[src]) return;
     const img = new Image();
-    img.onload = () => { bgImgCache.current[src] = img; };
+    img.onload = () => { bgCache.current[src] = img; };
     img.src = src;
   };
   useEffect(() => {
@@ -1297,40 +1448,44 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
     });
   }, [scenes]);
 
-  /* ── live preview animation ── */
+  /* ── live preview ── */
   useEffect(() => {
     if (step !== 2 || !sel) return;
-    sceneRef.current = sel;
+    const pH = PREV_H;
     const loop = () => {
       animT.current += 1/30;
       if (animT.current > (sceneRef.current?.dur || 5)) animT.current = 0;
-      const canvas = previewCanvasRef.current; if (!canvas) return;
+      const canvas = previewRef.current; if (!canvas) return;
       const ctx = canvas.getContext("2d");
-      drawReelFrame(ctx, PREV_W, PREV_H, sceneRef.current, animT.current, 1, bgImgCache.current);
-      /* draw selection outlines */
-      if (sceneRef.current) {
-        const sc = sceneRef.current;
-        const pH = PREV_H;
+      drawReelFrame(ctx, PREV_W, pH, sceneRef.current, animT.current, 1, bgCache.current);
+      const sc = sceneRef.current;
+      if (sc) {
+        /* selection outlines */
         sc.textBoxes.forEach(tb => {
-          if (tb.id !== selBoxId && selBoxId !== "__logo__") return;
-          if (tb.id !== selBoxId) return;
+          if (tb.id !== selElemId) return;
           const fSz = Math.round(tb.fontSize * previewSc);
-          const lines = Math.max(1, Math.ceil(tb.text.length / Math.max(1,
-            Math.floor((tb.wF*PREV_W) / (fSz*0.55)))));
-          const bw = tb.wF*PREV_W, bh = lines*tb.fontSize*1.55*previewSc+4;
-          ctx.save(); ctx.strokeStyle = "#9F5FF0"; ctx.lineWidth=1;
-          ctx.setLineDash([3,3]);
+          const estLines = Math.max(1, Math.ceil(tb.text.length / Math.max(1, Math.floor((tb.wF*PREV_W)/(fSz*0.55)))));
+          const bw = tb.wF*PREV_W, bh = estLines*tb.fontSize*1.55*previewSc + 4;
+          ctx.save(); ctx.strokeStyle="#9F5FF0"; ctx.lineWidth=1; ctx.setLineDash([3,3]);
           ctx.strokeRect(tb.xF*PREV_W-1, tb.yF*pH-1, bw+2, bh+2);
-          /* resize handle */
           ctx.fillStyle="#7B35D4"; ctx.setLineDash([]);
-          ctx.fillRect(tb.xF*PREV_W+bw-5, tb.yF*pH+bh/2-10, 10, 20);
+          ctx.fillRect(tb.xF*PREV_W+bw-5, tb.yF*pH+Math.max(bh/2-12,0), 10, 24);
           ctx.restore();
         });
-        if (selBoxId==="__logo__" && sc.logo && bgImgCache.current[sc.logo.src]) {
-          const lw=sc.logo.wF*PREV_W, lh=lw*sc.logo.ar;
+        sc.elements.forEach(el => {
+          if (el.id !== selElemId) return;
+          const ew=el.wF*PREV_W, eh=ew*el.ar;
           ctx.save(); ctx.strokeStyle="#2A9D8F"; ctx.lineWidth=1; ctx.setLineDash([3,3]);
-          ctx.strokeRect(sc.logo.xF*PREV_W-1, sc.logo.yF*pH-1, lw+2, lh+2);
+          ctx.strokeRect(el.xF*PREV_W-1, el.yF*pH-1, ew+2, eh+2);
           ctx.fillStyle="#2A9D8F"; ctx.setLineDash([]);
+          ctx.fillRect(el.xF*PREV_W+ew-5, el.yF*pH+eh-5, 10, 10);
+          ctx.restore();
+        });
+        if (selIsLogo && sc.logo && bgCache.current[sc.logo.src]) {
+          const lw=sc.logo.wF*PREV_W, lh=lw*sc.logo.ar;
+          ctx.save(); ctx.strokeStyle="#E8A838"; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+          ctx.strokeRect(sc.logo.xF*PREV_W-1, sc.logo.yF*pH-1, lw+2, lh+2);
+          ctx.fillStyle="#E8A838"; ctx.setLineDash([]);
           ctx.fillRect(sc.logo.xF*PREV_W+lw-5, sc.logo.yF*pH+lh-5, 10, 10);
           ctx.restore();
         }
@@ -1339,10 +1494,7 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
     };
     loop();
     return () => cancelAnimationFrame(animRaf.current);
-  }, [step, selScene, selBoxId, scenes, plt]);
-
-  /* update scene ref for animation loop without restarting */
-  useEffect(() => { sceneRef.current = sel; }, [sel]);
+  }, [step, selScene, selElemId, scenes, plt, PREV_W, PREV_H]);
 
   /* ── drag on preview canvas ── */
   useEffect(() => {
@@ -1350,24 +1502,23 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
     const pH = PREV_H;
     const onMove = (e) => {
       const r = dragRef.current; if (!r) return;
-      const dx = e.clientX - r.startX, dy = e.clientY - r.startY;
-      const i = csRef.current;
-      const sc = scenes[i]; if (!sc) return;
-      if (dragging.startsWith("move-")) {
-        const id = dragging.slice(5);
-        updTB(sc.id, id, {
-          xF: Math.max(0, Math.min(0.9,  r.xF0 + dx/PREV_W)),
-          yF: Math.max(0, Math.min(0.92, r.yF0 + dy/pH)),
-        });
-      } else if (dragging.startsWith("resize-")) {
-        const id = dragging.slice(7);
+      const dx = e.clientX-r.startX, dy = e.clientY-r.startY;
+      const i = csRef.current; const sc = scenes[i]; if (!sc) return;
+      if (dragging.startsWith("move-tb-")) {
+        const id = dragging.slice(8);
+        updTB(sc.id, id, { xF: Math.max(0,Math.min(0.9, r.xF0+dx/PREV_W)), yF: Math.max(0,Math.min(0.92, r.yF0+dy/pH)) });
+      } else if (dragging.startsWith("resize-tb-")) {
+        const id = dragging.slice(10);
         const tb = sc.textBoxes.find(t=>t.id===id); if (!tb) return;
         updTB(sc.id, id, { wF: Math.max(0.08, Math.min(1-tb.xF, r.wF0+dx/PREV_W)) });
+      } else if (dragging.startsWith("move-el-")) {
+        const id = dragging.slice(8);
+        updEl(sc.id, id, { xF: Math.max(0,Math.min(0.92, r.xF0+dx/PREV_W)), yF: Math.max(0,Math.min(0.92, r.yF0+dy/pH)) });
+      } else if (dragging.startsWith("resize-el-")) {
+        const id = dragging.slice(10);
+        updEl(sc.id, id, { wF: Math.max(0.04, Math.min(0.9, r.wF0+dx/PREV_W)) });
       } else if (dragging==="logo-move" && sc.logo) {
-        updLogo(sc.id, {
-          xF: Math.max(0, Math.min(0.9,  r.xF0+dx/PREV_W)),
-          yF: Math.max(0, Math.min(0.9,  r.yF0+dy/pH)),
-        });
+        updLogo(sc.id, { xF: Math.max(0,Math.min(0.9, r.xF0+dx/PREV_W)), yF: Math.max(0,Math.min(0.9, r.yF0+dy/pH)) });
       } else if (dragging==="logo-resize" && sc.logo) {
         updLogo(sc.id, { wF: Math.max(0.04, Math.min(0.9, r.wF0+dx/PREV_W)) });
       }
@@ -1376,48 +1527,55 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup",   onUp);
     return () => { window.removeEventListener("mousemove",onMove); window.removeEventListener("mouseup",onUp); };
-  }, [dragging, scenes, plt]);
+  }, [dragging, scenes, PREV_W, PREV_H]);
 
-  /* ── preview canvas mouse handlers ── */
   const onPreviewMouseDown = (e) => {
-    if (step!==2 || !sel) return;
-    const rect = previewCanvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    const pH = PREV_H;
+    if (step!==2||!sel) return;
+    const rect = previewRef.current?.getBoundingClientRect(); if (!rect) return;
+    const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+    const pH=PREV_H;
 
-    /* check logo resize handle first */
-    if (sel.logo && bgImgCache.current[sel.logo.src]) {
+    /* logo */
+    if (sel.logo && bgCache.current[sel.logo.src]) {
       const lw=sel.logo.wF*PREV_W, lh=lw*sel.logo.ar;
-      const rx_=sel.logo.xF*PREV_W+lw-5, ry_=sel.logo.yF*pH+lh-5;
-      if (mx>=rx_&&mx<=rx_+10&&my>=ry_&&my<=ry_+10) {
+      if (mx>=sel.logo.xF*PREV_W+lw-5 && mx<=sel.logo.xF*PREV_W+lw+5 && my>=sel.logo.yF*pH+lh-5 && my<=sel.logo.yF*pH+lh+5) {
         e.preventDefault(); dragRef.current={startX:e.clientX,startY:e.clientY,wF0:sel.logo.wF};
-        setDragging("logo-resize"); setSelBoxId("__logo__"); return;
+        setDragging("logo-resize"); setSelElemId("__logo__"); return;
       }
-      /* logo move */
-      if (mx>=sel.logo.xF*PREV_W&&mx<=sel.logo.xF*PREV_W+lw&&my>=sel.logo.yF*pH&&my<=sel.logo.yF*pH+lh) {
+      if (mx>=sel.logo.xF*PREV_W && mx<=sel.logo.xF*PREV_W+lw && my>=sel.logo.yF*pH && my<=sel.logo.yF*pH+lh) {
         e.preventDefault(); dragRef.current={startX:e.clientX,startY:e.clientY,xF0:sel.logo.xF,yF0:sel.logo.yF};
-        setDragging("logo-move"); setSelBoxId("__logo__"); return;
+        setDragging("logo-move"); setSelElemId("__logo__"); return;
       }
     }
 
-    /* check text box resize handles */
-    for (const tb of [...sel.textBoxes].reverse()) {
-      const fSz = Math.round(tb.fontSize*previewSc);
-      const lines = Math.max(1, Math.ceil(tb.text.length/Math.max(1,Math.floor((tb.wF*PREV_W)/(fSz*0.55)))));
-      const bw=tb.wF*PREV_W, bh=lines*tb.fontSize*1.55*previewSc+4;
-      const rx_=tb.xF*PREV_W+bw-5, ry_=tb.yF*pH+bh/2-10;
-      if (mx>=rx_&&mx<=rx_+10&&my>=ry_&&my<=ry_+bh) {
-        e.preventDefault(); dragRef.current={startX:e.clientX,wF0:tb.wF};
-        setDragging(`resize-${tb.id}`); setSelBoxId(tb.id); return;
+    /* elements */
+    for (const el of [...sel.elements].reverse()) {
+      const ew=el.wF*PREV_W, eh=ew*el.ar;
+      if (mx>=el.xF*PREV_W+ew-5 && mx<=el.xF*PREV_W+ew+5 && my>=el.yF*pH+eh-5 && my<=el.yF*pH+eh+5) {
+        e.preventDefault(); dragRef.current={startX:e.clientX,startY:e.clientY,wF0:el.wF};
+        setDragging(`resize-el-${el.id}`); setSelElemId(el.id); return;
       }
-      /* text box move */
-      if (mx>=tb.xF*PREV_W&&mx<=tb.xF*PREV_W+bw&&my>=tb.yF*pH&&my<=tb.yF*pH+bh) {
-        e.preventDefault(); dragRef.current={startX:e.clientX,startY:e.clientY,xF0:tb.xF,yF0:tb.yF};
-        setDragging(`move-${tb.id}`); setSelBoxId(tb.id); return;
+      if (mx>=el.xF*PREV_W && mx<=el.xF*PREV_W+ew && my>=el.yF*pH && my<=el.yF*pH+eh) {
+        e.preventDefault(); dragRef.current={startX:e.clientX,startY:e.clientY,xF0:el.xF,yF0:el.yF};
+        setDragging(`move-el-${el.id}`); setSelElemId(el.id); return;
       }
     }
-    setSelBoxId(null);
+
+    /* text boxes */
+    for (const tb of [...sel.textBoxes].reverse()) {
+      const fSz=Math.round(tb.fontSize*previewSc);
+      const estLines=Math.max(1,Math.ceil(tb.text.length/Math.max(1,Math.floor((tb.wF*PREV_W)/(fSz*0.55)))));
+      const bw=tb.wF*PREV_W, bh=estLines*tb.fontSize*1.55*previewSc+4;
+      if (mx>=tb.xF*PREV_W+bw-5 && mx<=tb.xF*PREV_W+bw+5 && my>=tb.yF*pH && my<=tb.yF*pH+bh) {
+        e.preventDefault(); dragRef.current={startX:e.clientX,wF0:tb.wF};
+        setDragging(`resize-tb-${tb.id}`); setSelElemId(tb.id); return;
+      }
+      if (mx>=tb.xF*PREV_W && mx<=tb.xF*PREV_W+bw && my>=tb.yF*pH && my<=tb.yF*pH+bh) {
+        e.preventDefault(); dragRef.current={startX:e.clientX,startY:e.clientY,xF0:tb.xF,yF0:tb.yF};
+        setDragging(`move-tb-${tb.id}`); setSelElemId(tb.id); return;
+      }
+    }
+    setSelElemId(null);
   };
 
   /* ── generate script ── */
@@ -1425,39 +1583,23 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
     setGenError(""); setGenLoading(true);
     const sceneCount = duration<=15?2:duration<=30?3:duration<=45?4:5;
     const ctxLines = [
-      strategy?.resumen   ? "RESUMEN ESTRATÉGICO DEL MES: " + strategy.resumen : "",
-      brandForm.objetivo  ? "OBJETIVO DEL MES: "            + brandForm.objetivo : "",
-      brandForm.mes       ? "MES: "                         + brandForm.mes : "",
-      brandForm.pilares?.length ? "PILARES: "               + brandForm.pilares.join(", ") : "",
-      brandForm.redes?.length   ? "REDES ACTIVAS: "         + brandForm.redes.join(", ") : "",
-      post.hashtags ? "HASHTAGS DEL POST: " + post.hashtags : "",
-      post.cta      ? "CTA DEL POST: "      + post.cta      : "",
+      strategy?.resumen   ? "RESUMEN ESTRATÉGICO DEL MES: "+strategy.resumen : "",
+      brandForm.objetivo  ? "OBJETIVO DEL MES: "+brandForm.objetivo : "",
+      brandForm.mes       ? "MES: "+brandForm.mes : "",
+      brandForm.pilares?.length ? "PILARES: "+brandForm.pilares.join(", ") : "",
+      post.hashtags ? "HASHTAGS: "+post.hashtags : "",
+      post.cta      ? "CTA: "+post.cta : "",
     ].filter(Boolean).join("\n");
-
-    const sceneLines = Array.from(
-      {length: sceneCount},
-      (_, i) => "ESCENA " + (i+1) + ": [punto de valor concreto máx 12 palabras]"
-    ).join("\n");
-
+    const sceneLines = Array.from({length:sceneCount},(_,i)=>"ESCENA "+(i+1)+": [punto de valor concreto máx 12 palabras]").join("\n");
     const prompt = "Sos un experto en contenido para redes sociales en español latinoamericano.\n"
-      + "Generá un guión para un video corto (" + duration + " segundos) para " + plt.label + ".\n\n"
-      + "CONTEXTO DE MARCA:\n"
-      + "NEGOCIO: " + brandForm.negocio + (brandForm.industria ? " — " + brandForm.industria : "") + "\n"
-      + "AUDIENCIA: " + (brandForm.audiencia || "general") + "\n"
-      + "TONO: " + brandForm.tono + "\n"
-      + ctxLines + "\n\n"
-      + "POST QUE ORIGINA ESTE VIDEO:\n"
-      + "RED: " + post.red + " | PILAR: " + post.pilar + (post.tipo ? " | TIPO: " + post.tipo : "") + "\n"
-      + "COPY: " + post.copy + "\n\n"
-      + "INSTRUCCIONES:\n"
-      + "- El video debe ser la versión audiovisual del post, NO una repetición literal\n"
-      + "- Respetá el tono, la audiencia y el objetivo estratégico del mes\n"
-      + "- El GANCHO debe detener el scroll en los primeros 2 segundos\n"
-      + "- Generá exactamente " + (sceneCount+2) + " secciones con ESTE FORMATO EXACTO (sin texto extra, sin markdown):\n\n"
-      + "GANCHO: [frase de impacto máx 10 palabras]\n"
-      + sceneLines + "\n"
-      + "CTA: [llamada a acción directa máx 8 palabras]\n\n"
-      + "Respondé SOLO con las secciones.";
+      +"Generá un guión para un video corto ("+duration+" segundos) para "+plt.label+".\n\n"
+      +"CONTEXTO DE MARCA:\nNEGOCIO: "+brandForm.negocio+(brandForm.industria?" — "+brandForm.industria:"")+"\n"
+      +"AUDIENCIA: "+(brandForm.audiencia||"general")+"\nTONO: "+brandForm.tono+"\n"+ctxLines+"\n\n"
+      +"POST QUE ORIGINA ESTE VIDEO:\nRED: "+post.red+" | PILAR: "+post.pilar+(post.tipo?" | TIPO: "+post.tipo:"")+"\nCOPY: "+post.copy+"\n\n"
+      +"INSTRUCCIONES:\n- El video debe ser versión audiovisual del post, NO repetición literal\n"
+      +"- Respetá tono, audiencia y objetivo estratégico\n- El GANCHO debe detener el scroll\n"
+      +"- Generá exactamente "+(sceneCount+2)+" secciones con ESTE FORMATO EXACTO (sin texto extra):\n\n"
+      +"GANCHO: [frase de impacto máx 10 palabras]\n"+sceneLines+"\nCTA: [llamada a acción directa máx 8 palabras]\n\nRespondé SOLO con las secciones.";
     try {
       const raw = await callClaude([{role:"user",content:prompt}], 400);
       const parsed = parseReelScript(raw);
@@ -1465,20 +1607,19 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
       const BG_PAIRS = [["#0C0C0F","#7B35D4"],["#0A0A2E","#2A9D8F"],["#1A0A2E","#9F5FF0"],["#0A1A0A","#2A9D8F"],["#1A0A0A","#E63946"]];
       const newScenes = parsed.map((p,i) => ({
         ...makeScene(p.label, p.text),
-        dur: i===parsed.length-1 ? duration-durPer*(parsed.length-1) : durPer,
+        dur: i===parsed.length-1?duration-durPer*(parsed.length-1):durPer,
         bgColor: BG_PAIRS[i%5][0], bgColor2: BG_PAIRS[i%5][1],
-        logo: brandForm.logoSrc ? {src:brandForm.logoSrc,xF:0.06,yF:0.05,wF:0.18,ar:1} : null,
+        logo: brandForm.logoSrc?{src:brandForm.logoSrc,xF:0.06,yF:0.05,wF:0.18,ar:1}:null,
       }));
-      /* cache logo */
       if (brandForm.logoSrc) cacheImg(brandForm.logoSrc);
-      setScenes(newScenes); setSelScene(0); setSelBoxId(null); setStep(2);
-    } catch(e) { setGenError(`Error: ${e.message}`); }
+      setScenes(newScenes); setSelScene(0); setSelElemId(null); setStep(2);
+    } catch(e) { setGenError("Error: "+e.message); }
     finally { setGenLoading(false); }
   };
 
-  /* ── record video ── */
+  /* ── record ── */
   const handleRecord = () => {
-    const canvas = renderCanvasRef.current; if (!canvas||rendering) return;
+    const canvas = renderRef.current; if (!canvas||rendering) return;
     const ctx = canvas.getContext("2d");
     const W=plt.w, H=plt.h, fps=30, chunks=[];
     cancelAnimationFrame(recRaf.current);
@@ -1489,15 +1630,12 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
       const stream = capFn.call(canvas, fps);
       try { recorder = new MediaRecorder(stream,{mimeType:"video/webm;codecs=vp9"}); }
       catch { recorder = new MediaRecorder(stream); }
-    } catch {
-      alert("Tu navegador no soporta grabación. Usá Chrome o Edge.");
-      return;
-    }
+    } catch { alert("Usá Chrome o Edge para grabar."); return; }
+
     recorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
     recorder.onstop = () => {
       const blob = new Blob(chunks,{type:"video/webm"});
       setVideoBlob(blob);
-      /* convert to base64 for persistent saving */
       const reader = new FileReader();
       reader.onload = ev => setVideoB64(ev.target.result);
       reader.readAsDataURL(blob);
@@ -1506,34 +1644,42 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
     recorder.start(200);
     setRendering(true); setProgress(0); setVideoBlob(null); setVideoB64(null);
 
-    const timeline = scenes.map(s=>({scene:s,frames:s.dur*fps}));
-    const totalFrames = timeline.reduce((a,t)=>a+t.frames,0);
+    const timeline = buildTimeline(scenes, fps);
+    const totalFrames = timeline.reduce((a,s)=>a+s.frames,0);
     let gf=0;
+
     const draw=()=>{
-      let acc=0; let sceneObj=null; let fi=0; let sf=1;
-      for(const slot of timeline){
-        if(gf<acc+slot.frames){sceneObj=slot.scene;fi=gf-acc;sf=slot.frames;break;}
-        acc+=slot.frames;
+      let acc=0; let slot=null; let fi=0;
+      for (const s of timeline) {
+        if (gf < acc+s.frames) { slot=s; fi=gf-acc; break; }
+        acc+=s.frames;
       }
-      if(!sceneObj){recorder.stop();return;}
-      const t=gf/fps;
-      const INF=Math.min(fps*0.35,10),OUTF=Math.min(fps*0.25,8);
-      const alpha=fi<INF?fi/INF:fi>sf-OUTF?(sf-fi)/OUTF:1;
-      drawReelFrame(ctx,W,H,sceneObj,t,Math.max(0,Math.min(1,alpha)),bgImgCache.current);
+      if (!slot) { recorder.stop(); return; }
+
+      const t = gf/fps;
+      if (slot.type==="trans") {
+        const prog = fi/slot.frames;
+        drawTransition(ctx,W,H,slot.from,slot.to,prog,slot.transType,t,bgCache.current);
+      } else {
+        const INF=Math.min(fps*0.3,8), OUTF=Math.min(fps*0.25,8);
+        const alpha=fi<INF?fi/INF:fi>slot.frames-OUTF?(slot.frames-fi)/OUTF:1;
+        drawReelFrame(ctx,W,H,slot.scene,t,Math.max(0,Math.min(1,alpha)),bgCache.current);
+      }
+
       /* progress bar */
       const prog=gf/totalFrames;
       ctx.fillStyle="rgba(255,255,255,.07)"; ctx.fillRect(0,H-6,W,6);
       const pg=ctx.createLinearGradient(0,0,W,0);
       pg.addColorStop(0,"#7B35D4"); pg.addColorStop(1,"#2A9D8F");
       ctx.fillStyle=pg; ctx.fillRect(0,H-6,W*prog,6);
-      /* watermark */
       ctx.save(); ctx.globalAlpha=0.1;
-      ctx.font=`bold ${Math.round(W*0.012)}px monospace`;
-      ctx.fillStyle="#fff"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.font=`bold ${Math.round(W*0.012)}px monospace`; ctx.fillStyle="#fff";
+      ctx.textAlign="center"; ctx.textBaseline="middle";
       ctx.fillText("CHROMA",W/2,H-18); ctx.restore();
+
       gf++;
       setProgress(Math.round((gf/totalFrames)*100));
-      if(gf>=totalFrames){recorder.stop();return;}
+      if (gf>=totalFrames) { recorder.stop(); return; }
       recRaf.current=requestAnimationFrame(draw);
     };
     draw();
@@ -1551,13 +1697,10 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
     if(!videoB64||!onSaveReel)return;
     setSaving(true);
     try {
-      /* thumbnail from first frame of first scene */
       const tc=document.createElement("canvas");
       tc.width=240; tc.height=Math.round(240*plt.h/plt.w);
-      const tctx=tc.getContext("2d");
-      drawReelFrame(tctx,tc.width,tc.height,scenes[0]||makeScene(),0,1,bgImgCache.current);
-      const thumb=tc.toDataURL("image/jpeg",0.75);
-      onSaveReel({scenes,platform,duration}, videoB64, thumb);
+      drawReelFrame(tc.getContext("2d"),tc.width,tc.height,scenes[0]||makeScene(),0,1,bgCache.current);
+      onSaveReel({scenes,platform,duration},videoB64,tc.toDataURL("image/jpeg",0.75));
     } finally { setSaving(false); }
   };
 
@@ -1568,10 +1711,7 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
     reader.onload=ev=>{
       const src=ev.target.result;
       const img=new Image();
-      img.onload=()=>{
-        bgImgCache.current[src]=img;
-        setScenes(p=>p.map(s=>s.id!==scId?s:{...s,logo:{src,xF:0.06,yF:0.05,wF:0.18,ar:img.height/img.width}}));
-      };
+      img.onload=()=>{ bgCache.current[src]=img; setScenes(p=>p.map(s=>s.id!==scId?s:{...s,logo:{src,xF:0.06,yF:0.05,wF:0.18,ar:img.height/img.width}})); };
       img.src=src;
     };
     reader.readAsDataURL(file);
@@ -1582,16 +1722,42 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
     reader.onload=ev=>{ cacheImg(ev.target.result); updScene(scId,{bgImage:ev.target.result,bgType:"image"}); };
     reader.readAsDataURL(file);
   };
+  const handleGifFile=async(scId,file)=>{
+    if(!file)return;
+    try {
+      const ab=await file.arrayBuffer();
+      const {frames,delays,w,h,ar}=await decodeGif(ab);
+      const totalDuration=delays.reduce((a,d)=>a+d,0);
+      const reader=new FileReader();
+      reader.onload=ev=>{
+        const el=makeElement("gif",{frames,delays,totalDuration,ar,gifW:w,gifH:h,src:ev.target.result,wF:0.25});
+        setScenes(p=>p.map(s=>s.id!==scId?s:{...s,elements:[...s.elements,el]}));
+        setSelElemId(el.id);
+      };
+      reader.readAsDataURL(file);
+    } catch(e){ alert("Error cargando GIF: "+e.message); }
+  };
+
+  /* ── parseReelScript (local) ── */
+  function parseReelScript(raw) {
+    const rx=/(GANCHO|ESCENA\s*\d+|CTA):\s*([^\n]+(?:\n(?!GANCHO:|ESCENA|CTA:)[^\n]+)*)/gi;
+    const out=[];let m;
+    while((m=rx.exec(raw))!==null)out.push({label:m[1].trim().toUpperCase(),text:m[2].replace(/\n/g," ").trim()});
+    return out.length?out:[{label:"CONTENIDO",text:raw.trim()}];
+  }
 
   /* ── styles ── */
   const RE={
     lbl:{display:"block",fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",color:C.accentLt,marginBottom:5,fontFamily:"Georgia,serif"},
     inp:{width:"100%",background:C.surf3,border:`1px solid ${C.border}`,borderRadius:7,color:C.text,fontSize:12,padding:"7px 9px",fontFamily:"Georgia,serif",boxSizing:"border-box",outline:"none",marginBottom:7},
-    chip:(active)=>({padding:"5px 9px",borderRadius:5,border:`1px solid ${active?C.accent:C.border}`,background:active?`${C.accent}22`:"transparent",color:active?C.accentLt:C.muted,fontSize:10,cursor:"pointer",fontFamily:"Georgia,serif",transition:"all .15s",whiteSpace:"nowrap"}),
-    sec:{borderTop:`1px solid ${C.border}`,paddingTop:10,marginTop:10},
-    iconBtn:(active)=>({width:28,height:26,borderRadius:5,border:`1px solid ${active?C.accent:C.border}`,background:active?`${C.accent}22`:"transparent",color:active?C.accentLt:C.muted,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}),
-    alignBtn:(active)=>({flex:1,height:26,borderRadius:5,border:`1px solid ${active?C.accent:C.border}`,background:active?`${C.accent}22`:"transparent",color:active?C.accentLt:C.muted,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}),
+    chip:(a)=>({padding:"5px 9px",borderRadius:5,border:`1px solid ${a?C.accent:C.border}`,background:a?`${C.accent}22`:"transparent",color:a?C.accentLt:C.muted,fontSize:10,cursor:"pointer",fontFamily:"Georgia,serif",transition:"all .15s",whiteSpace:"nowrap"}),
+    sec:{borderTop:`1px solid ${C.border}`,paddingTop:9,marginTop:9},
+    iconBtn:(a)=>({width:28,height:26,borderRadius:5,border:`1px solid ${a?C.accent:C.border}`,background:a?`${C.accent}22`:"transparent",color:a?C.accentLt:C.muted,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}),
+    alignBtn:(a)=>({flex:1,height:26,borderRadius:5,border:`1px solid ${a?C.accent:C.border}`,background:a?`${C.accent}22`:"transparent",color:a?C.accentLt:C.muted,cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center"}),
   };
+
+  const totalDur = scenes.reduce((a,s)=>a+s.dur,0);
+  const transCount = scenes.filter((s,i)=>i>0&&s.transIn?.type!=="none").length;
 
   return (
     <>
@@ -1599,15 +1765,15 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
       <div style={{position:"fixed",right:0,top:0,bottom:0,width:"min(980px,99vw)",background:C.surface,borderLeft:`1px solid ${C.border}`,zIndex:61,display:"flex",flexDirection:"column",animation:"slideIn .25s ease",userSelect:dragging?"none":"auto",cursor:dragging?"grabbing":"default"}}>
 
         {/* Header */}
-        <div style={{padding:"14px 20px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:14,flexShrink:0}}>
+        <div style={{padding:"13px 20px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:14,flexShrink:0}}>
           <div style={{flex:1}}>
             <div style={{fontSize:14,color:C.text,fontFamily:"Georgia,serif"}}>🎬 Editor de Reel</div>
-            <div style={{fontSize:11,color:C.muted,marginTop:1}}>{post.red} · {post.pilar}</div>
+            <div style={{fontSize:11,color:C.muted,marginTop:1}}>{post.red} · {post.pilar}{transCount>0?` · ${transCount} transición${transCount>1?"es":""}`:""}</div>
           </div>
           <div style={{display:"flex",gap:3,background:C.surf2,borderRadius:8,padding:3,border:`1px solid ${C.border}`}}>
             {[["1","Configurar"],["2","Escenas"],["3","Grabar"]].map(([n,label])=>(
               <button key={n} disabled={parseInt(n)>step} onClick={()=>parseInt(n)<step&&setStep(parseInt(n))}
-                style={{padding:"6px 14px",borderRadius:6,border:"none",background:step===parseInt(n)?C.accent:"transparent",color:step===parseInt(n)?C.text:step>parseInt(n)?C.accentLt:C.muted,fontSize:12,cursor:step>=parseInt(n)?"pointer":"not-allowed",fontFamily:"Georgia,serif"}}>
+                style={{padding:"6px 12px",borderRadius:6,border:"none",background:step===parseInt(n)?C.accent:"transparent",color:step===parseInt(n)?C.text:step>parseInt(n)?C.accentLt:C.muted,fontSize:12,cursor:step>=parseInt(n)?"pointer":"not-allowed",fontFamily:"Georgia,serif"}}>
                 {n}. {label}
               </button>
             ))}
@@ -1618,7 +1784,7 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
         {/* Body */}
         <div style={{flex:1,display:"flex",overflow:"hidden"}}>
 
-          {/* ── LEFT sidebar ── */}
+          {/* ── SIDEBAR ── */}
           <div style={{width:285,flexShrink:0,overflowY:"auto",borderRight:`1px solid ${C.border}`,padding:"12px 13px 30px"}}>
 
             {/* STEP 1 */}
@@ -1634,23 +1800,18 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
                 </div>
                 <div style={{background:C.surf2,border:`1px solid ${C.border}`,borderRadius:8,padding:"11px 13px",marginBottom:10,fontSize:11,lineHeight:1.7,fontFamily:"Georgia,serif"}}>
                   <div style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:C.accentLt,marginBottom:7}}>Contexto de estrategia</div>
-                  {strategy?.resumen && (
-                    <div style={{color:C.muted,marginBottom:6,borderLeft:`2px solid ${C.accent}`,paddingLeft:8,fontSize:11}}>
-                      {strategy.resumen.slice(0,120)}{strategy.resumen.length>120?"…":""}
-                    </div>
-                  )}
+                  {strategy?.resumen&&<div style={{color:C.muted,marginBottom:6,borderLeft:`2px solid ${C.accent}`,paddingLeft:8,fontSize:11}}>{strategy.resumen.slice(0,110)}{strategy.resumen.length>110?"…":""}</div>}
                   <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:"3px 8px",fontSize:11}}>
                     <span style={{color:C.muted}}>Negocio</span><span style={{color:C.text}}>{brandForm.negocio}{brandForm.industria?` — ${brandForm.industria}`:""}</span>
                     {brandForm.mes&&<><span style={{color:C.muted}}>Mes</span><span style={{color:C.text}}>{brandForm.mes}</span></>}
-                    {brandForm.objetivo&&<><span style={{color:C.muted}}>Objetivo</span><span style={{color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{brandForm.objetivo.slice(0,50)}{brandForm.objetivo.length>50?"…":""}</span></>}
                     {brandForm.tono&&<><span style={{color:C.muted}}>Tono</span><span style={{color:C.text}}>{brandForm.tono}</span></>}
                     {brandForm.pilares?.length>0&&<><span style={{color:C.muted}}>Pilares</span><span style={{color:C.text}}>{brandForm.pilares.join(", ")}</span></>}
                   </div>
                 </div>
                 <div style={{background:`${C.accent}11`,border:`1px solid ${C.accent}33`,borderRadius:8,padding:"9px 12px",marginBottom:14}}>
-                  <div style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:C.accentLt,marginBottom:5}}>Post que origina este reel</div>
-                  <div style={{fontSize:11,color:C.accentLt,marginBottom:3}}>{post.red} · {post.pilar} · {post.tipo||""}</div>
-                  <div style={{fontSize:11,color:C.muted}}>{post.copy?.slice(0,100)}{post.copy?.length>100?"…":""}</div>
+                  <div style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:C.accentLt,marginBottom:5}}>Post origen</div>
+                  <div style={{fontSize:11,color:C.accentLt,marginBottom:3}}>{post.red} · {post.pilar}</div>
+                  <div style={{fontSize:11,color:C.muted}}>{post.copy?.slice(0,90)}{post.copy?.length>90?"…":""}</div>
                 </div>
                 {genError&&<div style={{background:"#2A0808",border:"1px solid #7B1F1F",borderRadius:7,padding:"9px 12px",color:"#FF9999",fontSize:12,marginBottom:10}}>{genError}</div>}
                 <button onClick={handleGenerate} disabled={genLoading}
@@ -1665,12 +1826,13 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
               <div>
                 {/* Scene list */}
                 <label style={RE.lbl}>Escenas ({scenes.length})</label>
-                <div style={{display:"flex",flexDirection:"column",gap:3,marginBottom:10}}>
+                <div style={{display:"flex",flexDirection:"column",gap:3,marginBottom:8}}>
                   {scenes.map((s,i)=>(
-                    <div key={s.id} onClick={()=>{setSelScene(i);setSelBoxId(null);}}
-                      style={{display:"flex",alignItems:"center",gap:6,background:selScene===i?`${C.accent}22`:C.surf2,border:`1px solid ${selScene===i?C.accent:C.border}`,borderRadius:6,padding:"6px 9px",cursor:"pointer"}}>
+                    <div key={s.id} onClick={()=>{setSelScene(i);setSelElemId(null);}}
+                      style={{display:"flex",alignItems:"center",gap:5,background:selScene===i?`${C.accent}22`:C.surf2,border:`1px solid ${selScene===i?C.accent:C.border}`,borderRadius:6,padding:"5px 8px",cursor:"pointer"}}>
+                      {i>0&&<span title={s.transIn?.type||"fade"} style={{fontSize:9,color:C.teal,flexShrink:0}}>⇢</span>}
                       <span style={{fontSize:9,background:selScene===i?C.accent:C.surf3,color:selScene===i?"#fff":C.muted,borderRadius:3,padding:"1px 5px",fontFamily:"monospace",flexShrink:0}}>{s.label.slice(0,4)}</span>
-                      <span style={{fontSize:10,color:selScene===i?C.text:C.muted,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"Georgia,serif"}}>{(s.textBoxes[0]?.text||"").slice(0,22)}{(s.textBoxes[0]?.text?.length||0)>22?"…":""}</span>
+                      <span style={{fontSize:10,color:selScene===i?C.text:C.muted,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"Georgia,serif"}}>{(s.textBoxes[0]?.text||"").slice(0,20)}</span>
                       <span style={{fontSize:9,color:C.muted,flexShrink:0}}>{s.dur}s</span>
                     </div>
                   ))}
@@ -1678,34 +1840,51 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
 
                 {/* Duration */}
                 <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-                  <span style={{fontSize:9,color:C.accentLt,fontFamily:"Georgia,serif",whiteSpace:"nowrap"}}>DURACIÓN ESCENA</span>
+                  <span style={{fontSize:9,color:C.accentLt,fontFamily:"Georgia,serif",whiteSpace:"nowrap"}}>DURACIÓN</span>
                   <input type="range" min={2} max={20} value={sel.dur} onChange={e=>updScene(sel.id,{dur:parseInt(e.target.value)})} style={{flex:1,accentColor:C.accent}}/>
                   <span style={{fontSize:11,color:C.muted,minWidth:26,fontFamily:"Georgia,serif"}}>{sel.dur}s</span>
                 </div>
 
-                {/* Text boxes list */}
+                {/* Transition in */}
+                {scenes.indexOf(sel) > 0 && (
+                  <div style={{...RE.sec}}>
+                    <label style={RE.lbl}>Transición de entrada</label>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,marginBottom:7}}>
+                      {TRANS_TYPES.map(tt=>(
+                        <button key={tt.id} style={RE.chip(sel.transIn?.type===tt.id)} onClick={()=>updScene(sel.id,{transIn:{...sel.transIn,type:tt.id}})}>{tt.label}</button>
+                      ))}
+                    </div>
+                    {sel.transIn?.type!=="none"&&(
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <span style={{fontSize:9,color:C.muted,fontFamily:"Georgia,serif"}}>Duración</span>
+                        <input type="range" min={0.1} max={1.5} step={0.1} value={sel.transIn?.duration||0.4} onChange={e=>updScene(sel.id,{transIn:{...sel.transIn,duration:parseFloat(e.target.value)}})} style={{flex:1,accentColor:C.teal}}/>
+                        <span style={{fontSize:11,color:C.muted,minWidth:28,fontFamily:"Georgia,serif"}}>{(sel.transIn?.duration||0.4).toFixed(1)}s</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Text boxes */}
                 <div style={RE.sec}>
                   <label style={RE.lbl}>Cajas de texto</label>
                   <div style={{display:"flex",flexDirection:"column",gap:3,marginBottom:7}}>
                     {sel.textBoxes.map((tb,i)=>(
-                      <div key={tb.id} onClick={()=>setSelBoxId(tb.id)}
-                        style={{display:"flex",alignItems:"center",gap:5,background:selBoxId===tb.id?`${C.accent}22`:C.surf2,border:`1px solid ${selBoxId===tb.id?C.accent:C.border}`,borderRadius:6,padding:"5px 8px",cursor:"pointer"}}>
-                        <span style={{fontSize:10,color:selBoxId===tb.id?C.accentLt:C.muted,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"Georgia,serif"}}>☰ Caja {i+1} {tb.text?`— ${tb.text.slice(0,16)}…`:""}</span>
-                        {sel.textBoxes.length>1&&<button onClick={e=>{e.stopPropagation();setScenes(p=>p.map(s=>s.id!==sel.id?s:{...s,textBoxes:s.textBoxes.filter(t=>t.id!==tb.id)}));if(selBoxId===tb.id)setSelBoxId(null);}} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:11,lineHeight:1}}>✕</button>}
+                      <div key={tb.id} onClick={()=>setSelElemId(tb.id)}
+                        style={{display:"flex",alignItems:"center",gap:5,background:selElemId===tb.id?`${C.accent}22`:C.surf2,border:`1px solid ${selElemId===tb.id?C.accent:C.border}`,borderRadius:6,padding:"5px 8px",cursor:"pointer"}}>
+                        <span style={{fontSize:10,color:selElemId===tb.id?C.accentLt:C.muted,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"Georgia,serif"}}>☰ Caja {i+1}{tb.text?` — ${tb.text.slice(0,16)}`:""}</span>
+                        {sel.textBoxes.length>1&&<button onClick={e=>{e.stopPropagation();setScenes(p=>p.map(s=>s.id!==sel.id?s:{...s,textBoxes:s.textBoxes.filter(t=>t.id!==tb.id)}));if(selElemId===tb.id)setSelElemId(null);}} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:11,lineHeight:1}}>✕</button>}
                       </div>
                     ))}
                   </div>
-                  <button onClick={()=>{const nb=makeTBReel("Texto nuevo",0.07,0.5);setScenes(p=>p.map(s=>s.id!==sel.id?s:{...s,textBoxes:[...s.textBoxes,nb]}));setSelBoxId(nb.id);}}
-                    style={{width:"100%",background:C.surf3,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:11,padding:"6px 10px",cursor:"pointer",fontFamily:"Georgia,serif",marginBottom:8}}>+ Nueva caja de texto</button>
+                  <button onClick={()=>{const nb=makeTBReel("Texto nuevo",0.07,0.48+sel.textBoxes.length*0.1);setScenes(p=>p.map(s=>s.id!==sel.id?s:{...s,textBoxes:[...s.textBoxes,nb]}));setSelElemId(nb.id);}}
+                    style={{width:"100%",background:C.surf3,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:11,padding:"6px 10px",cursor:"pointer",fontFamily:"Georgia,serif",marginBottom:7}}>+ Nueva caja de texto</button>
 
                   {/* Selected TB controls */}
-                  {selTB&&!selIsLogo&&(
+                  {selTB&&(
                     <div style={{background:C.surf2,border:`1px solid ${C.border}`,borderRadius:7,padding:"9px 9px 5px"}}>
-                      <label style={RE.lbl}>Texto</label>
                       <textarea value={selTB.text} onChange={e=>updTB(sel.id,selTB.id,{text:e.target.value})} rows={3} style={RE.inp}/>
                       <div style={{display:"flex",gap:4,marginBottom:6,alignItems:"center"}}>
-                        <select value={selTB.fontFamily} onChange={e=>updTB(sel.id,selTB.id,{fontFamily:e.target.value})}
-                          style={{flex:1,background:C.surf3,border:`1px solid ${C.border}`,borderRadius:5,color:C.text,fontSize:11,padding:"4px 5px",outline:"none",cursor:"pointer"}}>
+                        <select value={selTB.fontFamily} onChange={e=>updTB(sel.id,selTB.id,{fontFamily:e.target.value})} style={{flex:1,background:C.surf3,border:`1px solid ${C.border}`,borderRadius:5,color:C.text,fontSize:11,padding:"4px 5px",outline:"none",cursor:"pointer"}}>
                           {REEL_FONTS.map(f=><option key={f.value} value={f.value}>{f.label}</option>)}
                         </select>
                         <button style={RE.iconBtn(selTB.bold)} onClick={()=>updTB(sel.id,selTB.id,{bold:!selTB.bold})}><strong>B</strong></button>
@@ -1721,8 +1900,107 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
                           <button key={v} style={RE.alignBtn(selTB.align===v)} onClick={()=>updTB(sel.id,selTB.id,{align:v})}>{ic}</button>
                         ))}
                       </div>
-                      <label style={RE.lbl}>Color texto</label>
                       <ColorInput value={selTB.color} onChange={v=>updTB(sel.id,selTB.id,{color:v})}/>
+                    </div>
+                  )}
+                </div>
+
+                {/* Elements (icons / emoji / gif) */}
+                <div style={RE.sec}>
+                  <label style={RE.lbl}>Elementos</label>
+                  {/* Element list */}
+                  {sel.elements.length>0&&(
+                    <div style={{display:"flex",flexDirection:"column",gap:3,marginBottom:7}}>
+                      {sel.elements.map((el,i)=>(
+                        <div key={el.id} onClick={()=>setSelElemId(el.id)}
+                          style={{display:"flex",alignItems:"center",gap:5,background:selElemId===el.id?`${C.teal}22`:C.surf2,border:`1px solid ${selElemId===el.id?C.teal:C.border}`,borderRadius:6,padding:"5px 8px",cursor:"pointer"}}>
+                          <span style={{fontSize:13,flexShrink:0}}>{el.type==="emoji"?el.char:el.type==="icon"?"🔷":"🎞"}</span>
+                          <span style={{fontSize:10,color:selElemId===el.id?C.teal:C.muted,flex:1,fontFamily:"Georgia,serif"}}>{el.type==="icon"?el.iconKey:el.type==="emoji"?el.char:"GIF"} {i+1}</span>
+                          <button onClick={e=>{e.stopPropagation();setScenes(p=>p.map(s=>s.id!==sel.id?s:{...s,elements:s.elements.filter(el2=>el2.id!==el.id)}));if(selElemId===el.id)setSelElemId(null);}} style={{background:"transparent",border:"none",color:C.muted,cursor:"pointer",fontSize:11,lineHeight:1}}>✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Element tabs */}
+                  <div style={{display:"flex",gap:3,background:C.surf2,borderRadius:7,padding:3,marginBottom:8}}>
+                    {[["icons","Íconos"],["emoji","Emojis"],["gif","GIF"]].map(([t,l])=>(
+                      <button key={t} onClick={()=>setElemTab(t)} style={{flex:1,padding:"5px",borderRadius:5,border:"none",background:elemTab===t?C.surf3:"transparent",color:elemTab===t?C.text:C.muted,fontSize:11,cursor:"pointer",fontFamily:"Georgia,serif"}}>{l}</button>
+                    ))}
+                  </div>
+
+                  {/* Icon grid */}
+                  {elemTab==="icons"&&(
+                    <div>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                        <span style={{fontSize:9,color:C.muted,fontFamily:"Georgia,serif"}}>Color</span>
+                        <ColorInput value={iconColor} onChange={setIconColor}/>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:4}}>
+                        {REEL_ICON_KEYS.map(key=>{
+                          const img=getIconImg(key,iconColor);
+                          return (
+                            <button key={key} title={key} onClick={()=>{
+                              const el=makeElement("icon",{iconKey:key,color:iconColor,ar:1,wF:0.2});
+                              setScenes(p=>p.map(s=>s.id!==sel.id?s:{...s,elements:[...s.elements,el]}));
+                              setSelElemId(el.id);
+                            }}
+                            style={{background:C.surf2,border:`1px solid ${C.border}`,borderRadius:6,padding:4,cursor:"pointer",aspectRatio:"1",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                              <img src={img.src} style={{width:"100%",height:"100%",objectFit:"contain"}} alt={key}/>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Emoji grid */}
+                  {elemTab==="emoji"&&(
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:4}}>
+                      {REEL_EMOJIS.map(emoji=>(
+                        <button key={emoji} onClick={()=>{
+                          const el=makeElement("emoji",{char:emoji,fontSize:80,ar:1,wF:0.15});
+                          setScenes(p=>p.map(s=>s.id!==sel.id?s:{...s,elements:[...s.elements,el]}));
+                          setSelElemId(el.id);
+                        }}
+                        style={{background:C.surf2,border:`1px solid ${C.border}`,borderRadius:6,padding:"5px 2px",cursor:"pointer",fontSize:18,textAlign:"center",lineHeight:1}}>
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* GIF upload */}
+                  {elemTab==="gif"&&(
+                    <div>
+                      <input ref={gifFileRef} type="file" accept=".gif,image/gif" style={{display:"none"}} onChange={e=>handleGifFile(sel.id,e.target.files?.[0])}/>
+                      <button onClick={()=>gifFileRef.current?.click()} style={{width:"100%",background:C.surf3,border:`1px solid ${C.border}`,borderRadius:7,color:C.text,fontSize:12,padding:"10px",cursor:"pointer",fontFamily:"Georgia,serif",marginBottom:8}}>
+                        🎞 Subir GIF animado
+                      </button>
+                      <div style={{fontSize:10,color:C.muted,fontFamily:"Georgia,serif",lineHeight:1.6,textAlign:"center"}}>
+                        Subí GIFs con licencia libre.<br/>El GIF quedará animado en el video final.
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Selected element size */}
+                  {selEl&&(
+                    <div style={{marginTop:8,background:C.surf2,border:`1px solid ${C.border}`,borderRadius:7,padding:"8px 9px"}}>
+                      <label style={{...RE.lbl,color:C.teal}}>Elemento seleccionado</label>
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                        <span style={{fontSize:9,color:C.muted,fontFamily:"Georgia,serif"}}>Tamaño</span>
+                        <input type="range" min={5} max={80} value={Math.round(selEl.wF*100)} onChange={e=>updEl(sel.id,selEl.id,{wF:parseInt(e.target.value)/100})} style={{flex:1,accentColor:C.teal}}/>
+                        <span style={{fontSize:11,color:C.muted,minWidth:32,fontFamily:"Georgia,serif"}}>{Math.round(selEl.wF*100)}%</span>
+                      </div>
+                      {selEl.type==="icon"&&<><label style={{...RE.lbl,marginTop:4}}>Color</label><ColorInput value={selEl.color||"#FFFFFF"} onChange={v=>updEl(sel.id,selEl.id,{color:v})}/></>}
+                      {selEl.type==="emoji"&&(
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <span style={{fontSize:9,color:C.muted,fontFamily:"Georgia,serif"}}>Tamaño fuente</span>
+                          <input type="range" min={30} max={160} value={selEl.fontSize||80} onChange={e=>updEl(sel.id,selEl.id,{fontSize:parseInt(e.target.value)})} style={{flex:1,accentColor:C.teal}}/>
+                          <span style={{fontSize:11,color:C.muted,minWidth:32,fontFamily:"Georgia,serif"}}>{selEl.fontSize||80}px</span>
+                        </div>
+                      )}
+                      <div style={{fontSize:10,color:C.muted,fontFamily:"Georgia,serif",marginTop:4}}>Arrastrá en la vista previa · ◢ para escalar</div>
                     </div>
                   )}
                 </div>
@@ -1730,18 +2008,16 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
                 {/* Logo */}
                 <div style={RE.sec}>
                   <label style={RE.lbl}>Logo</label>
-                  <input ref={logoFileRef} type="file" accept="image/png,image/svg+xml,image/jpeg,image/webp" style={{display:"none"}}
-                    onChange={e=>handleLogoFile(sel.id,e.target.files?.[0])}/>
+                  <input ref={logoFileRef} type="file" accept="image/png,image/svg+xml,image/jpeg,image/webp" style={{display:"none"}} onChange={e=>handleLogoFile(sel.id,e.target.files?.[0])}/>
                   <div style={{display:"flex",gap:5,marginBottom:7}}>
-                    <button onClick={()=>logoFileRef.current?.click()}
-                      style={{flex:1,background:C.surf3,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:11,padding:"6px 10px",cursor:"pointer",fontFamily:"Georgia,serif"}}>
+                    <button onClick={()=>logoFileRef.current?.click()} style={{flex:1,background:C.surf3,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:11,padding:"6px 10px",cursor:"pointer",fontFamily:"Georgia,serif"}}>
                       📁 {sel.logo?"Cambiar logo":"Subir logo"}
                     </button>
                     {sel.logo&&<button onClick={()=>updScene(sel.id,{logo:null})} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,color:C.muted,fontSize:11,padding:"6px 8px",cursor:"pointer"}}>✕</button>}
                   </div>
                   {sel.logo&&(
                     <>
-                      <div style={{fontSize:10,color:C.muted,fontFamily:"Georgia,serif",marginBottom:6}}>Arrastrá en la vista previa · ◢ para escalar</div>
+                      <div style={{fontSize:10,color:C.muted,fontFamily:"Georgia,serif",marginBottom:6}}>Arrastrá para mover · ◢ para escalar</div>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
                         <input type="range" min={4} max={60} value={Math.round(sel.logo.wF*100)} onChange={e=>updLogo(sel.id,{wF:parseInt(e.target.value)/100})} style={{flex:1,accentColor:C.teal}}/>
                         <span style={{fontSize:11,color:C.muted,minWidth:32,fontFamily:"Georgia,serif"}}>{Math.round(sel.logo.wF*100)}%</span>
@@ -1750,14 +2026,13 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
                   )}
                 </div>
 
-                {/* Label */}
+                {/* Label + BG */}
                 <div style={{...RE.sec,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                   <div><div style={{fontSize:11,color:C.text,fontFamily:"Georgia,serif"}}>Etiqueta escena</div></div>
                   <Toggle on={sel.showLabel} onToggle={()=>updScene(sel.id,{showLabel:!sel.showLabel})}/>
                 </div>
                 {sel.showLabel&&<ColorInput value={sel.labelColor} onChange={v=>updScene(sel.id,{labelColor:v})}/>}
 
-                {/* Background */}
                 <div style={RE.sec}>
                   <label style={RE.lbl}>Fondo</label>
                   <div style={{display:"flex",gap:4,marginBottom:7}}>
@@ -1781,12 +2056,9 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
                   )}
                   {sel.bgType==="image"&&(
                     <>
-                      <input type="file" accept="image/*" style={{display:"none"}}
-                        ref={el=>{if(el)bgFileRefs.current[sel.id]=el;}}
-                        onChange={e=>handleBgFile(sel.id,e.target.files?.[0])}/>
+                      <input type="file" accept="image/*" style={{display:"none"}} ref={el=>{if(el)bgFileRefs.current[sel.id]=el;}} onChange={e=>handleBgFile(sel.id,e.target.files?.[0])}/>
                       <div style={{display:"flex",gap:5}}>
-                        <button onClick={()=>bgFileRefs.current[sel.id]?.click()}
-                          style={{flex:1,background:C.surf3,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:11,padding:"6px 10px",cursor:"pointer",fontFamily:"Georgia,serif"}}>
+                        <button onClick={()=>bgFileRefs.current[sel.id]?.click()} style={{flex:1,background:C.surf3,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,fontSize:11,padding:"6px 10px",cursor:"pointer",fontFamily:"Georgia,serif"}}>
                           🖼 {sel.bgImage?"Cambiar":"Subir imagen"}
                         </button>
                         {sel.bgImage&&<button onClick={()=>updScene(sel.id,{bgImage:null,bgType:"gradient"})} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,color:C.muted,fontSize:11,padding:"6px 8px",cursor:"pointer"}}>✕</button>}
@@ -1807,7 +2079,8 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
                   <div style={{fontSize:12,color:C.text,fontFamily:"Georgia,serif",marginBottom:4}}>Resumen</div>
                   <div style={{fontSize:11,color:C.muted,fontFamily:"Georgia,serif",lineHeight:1.7}}>
                     <div>📺 {plt.label} · {plt.w}×{plt.h}px</div>
-                    <div>🎞 {scenes.length} escenas · {scenes.reduce((a,s)=>a+s.dur,0)}s</div>
+                    <div>🎞 {scenes.length} escenas · {totalDur}s total</div>
+                    {transCount>0&&<div>⇢ {transCount} transición{transCount>1?"es":""}</div>}
                     <div>⬇ Formato: .webm (Chrome/Edge)</div>
                   </div>
                 </div>
@@ -1847,22 +2120,18 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
             )}
           </div>
 
-          {/* ── RIGHT: canvas preview ── */}
+          {/* ── RIGHT: preview ── */}
           <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:C.bg,overflow:"hidden",padding:"16px",gap:10}}>
             <div style={{fontSize:10,color:C.muted,letterSpacing:"0.12em",textTransform:"uppercase",fontFamily:"Georgia,serif"}}>
-              {step===2?`Escena ${selScene+1}/${scenes.length} — clic para seleccionar · arrastrá para mover`:step===3?`Canvas render ${plt.w}×${plt.h}px`:`${plt.label} · ${plt.w}×${plt.h}px`}
+              {step===2?`Escena ${selScene+1}/${scenes.length} — clic para seleccionar`:step===3?`Canvas render ${plt.w}×${plt.h}px`:`${plt.label} · ${plt.w}×${plt.h}px`}
             </div>
-
             {step!==3&&(
-              <canvas ref={previewCanvasRef}
-                width={PREV_W} height={PREV_H}
-                style={{borderRadius:10,boxShadow:"0 8px 40px rgba(0,0,0,.7)",cursor:dragging?"grabbing":"crosshair",flexShrink:0}}
+              <canvas ref={previewRef} width={PREV_W} height={PREV_H}
+                style={{borderRadius:10,boxShadow:"0 8px 40px rgba(0,0,0,.7)",flexShrink:0,cursor:dragging?"grabbing":"crosshair"}}
                 onMouseDown={onPreviewMouseDown}/>
             )}
-
-            <canvas ref={renderCanvasRef} width={plt.w} height={plt.h}
+            <canvas ref={renderRef} width={plt.w} height={plt.h}
               style={{display:step===3?"block":"none",borderRadius:8,boxShadow:"0 8px 40px rgba(0,0,0,.7)",maxWidth:"100%",maxHeight:PREV_MAX_H}}/>
-
             {step===1&&<div style={{fontSize:11,color:C.muted,fontFamily:"Georgia,serif",textAlign:"center",maxWidth:260,lineHeight:1.7}}>Configurá y generá el guión para ver la animación en vivo.</div>}
             {step===3&&!rendering&&!videoBlob&&<div style={{fontSize:11,color:C.muted,fontFamily:"Georgia,serif",textAlign:"center",lineHeight:1.7}}>El video se renderiza frame a frame.<br/>Usá Chrome o Edge.</div>}
           </div>
@@ -1870,7 +2139,7 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
 
         {/* Footer */}
         <div style={{padding:"11px 20px",borderTop:`1px solid ${C.border}`,display:"flex",gap:10,alignItems:"center",flexShrink:0,background:C.surface}}>
-          <div style={{fontSize:11,color:C.muted,fontFamily:"Georgia,serif"}}>🎬 {plt.label} · {scenes.reduce((a,s)=>a+s.dur,0)||duration}s</div>
+          <div style={{fontSize:11,color:C.muted,fontFamily:"Georgia,serif"}}>🎬 {plt.label} · {totalDur||duration}s{transCount>0?` · ${transCount} transición${transCount>1?"es":""}`:""}</div>
           <button onClick={onClose} style={{marginLeft:"auto",background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,color:C.muted,fontSize:12,padding:"8px 16px",cursor:"pointer",fontFamily:"Georgia,serif"}}>Cerrar</button>
         </div>
       </div>
