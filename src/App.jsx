@@ -139,7 +139,7 @@ function Stepper({ value, onChange, min = 0, max = 14 }) {
 }
 
 /* ─── POST CARD ──────────────────────────────────────────────────── */
-function PostCard({ post, semanaNum, onEdit, onRegenerate, regeneratingId, onDesign, onReel }) {
+function PostCard({ post, semanaNum, onEdit, onRegenerate, regeneratingId, onDesign, onReel, onClearDesign, onClearReel }) {
   const netColor = NET_COLOR[post.red] || C.accent;
   const isRegen  = regeneratingId === post.id;
   return (
@@ -259,20 +259,20 @@ function PostCard({ post, semanaNum, onEdit, onRegenerate, regeneratingId, onDes
               <div style={{ fontSize: 11, color: C.accentLt, fontFamily: "Georgia,serif", marginBottom: 2 }}>
                 🎨 Pieza guardada {post.designPngs?.length > 1 ? `· ${post.designPngs.length} slides` : ""}
               </div>
-              <div style={{ fontSize: 10, color: C.muted, fontFamily: "Georgia,serif" }}>Abrí el editor para editar · se incluirá en el ZIP</div>
+              <div style={{ fontSize: 10, color: C.muted, fontFamily: "Georgia,serif" }}>Se incluirá en el ZIP</div>
             </div>
-            {post.designPngs?.length > 0 && (
-              <button
-                onClick={() => {
-                  const link = document.createElement("a");
-                  link.download = `${post.red}-pieza.png`;
-                  link.href = post.designPngs[0];
-                  link.click();
-                }}
-                title="Descargar PNG"
-                style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6, color: C.muted, fontSize: 11, padding: "4px 8px", cursor: "pointer", flexShrink: 0 }}
-              >⬇</button>
-            )}
+            <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+              {post.designPngs?.length > 0 && (
+                <button onClick={() => { const a = document.createElement("a"); a.download = `${post.red}-pieza.png`; a.href = post.designPngs[0]; a.click(); }}
+                  title="Descargar PNG"
+                  style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6, color: C.muted, fontSize: 11, padding: "4px 8px", cursor: "pointer" }}>⬇</button>
+              )}
+              {onClearDesign && (
+                <button onClick={() => { if (window.confirm("¿Eliminar la pieza guardada de este post?")) onClearDesign(); }}
+                  title="Eliminar pieza guardada"
+                  style={{ background: "transparent", border: `1px solid #E6394644`, borderRadius: 6, color: "#E63946", fontSize: 11, padding: "4px 8px", cursor: "pointer" }}>🗑</button>
+              )}
+            </div>
           </div>
         )}
         {/* ── Saved reel thumbnail ── */}
@@ -284,7 +284,19 @@ function PostCard({ post, semanaNum, onEdit, onRegenerate, regeneratingId, onDes
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 11, color: C.teal, fontFamily: "Georgia,serif", marginBottom: 2 }}>🎬 Reel guardado</div>
-              <div style={{ fontSize: 10, color: C.muted, fontFamily: "Georgia,serif" }}>Se incluirá en el ZIP · abrí el editor para regrabar</div>
+              <div style={{ fontSize: 10, color: C.muted, fontFamily: "Georgia,serif" }}>Se incluirá en el ZIP</div>
+            </div>
+            <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+              {post.reelVideoB64 && (
+                <button onClick={() => { const a = document.createElement("a"); a.href = post.reelVideoB64; a.download = `${post.red}-reel.webm`; a.click(); }}
+                  title="Descargar .webm"
+                  style={{ background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6, color: C.muted, fontSize: 11, padding: "4px 8px", cursor: "pointer" }}>⬇</button>
+              )}
+              {onClearReel && (
+                <button onClick={() => { if (window.confirm("¿Eliminar el reel guardado de este post?")) onClearReel(); }}
+                  title="Eliminar reel guardado"
+                  style={{ background: "transparent", border: `1px solid #E6394644`, borderRadius: 6, color: "#E63946", fontSize: 11, padding: "4px 8px", cursor: "pointer" }}>🗑</button>
+              )}
             </div>
           </div>
         )}
@@ -1243,11 +1255,17 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
   const slide = scenes[selScene] || null;
   const sel   = slide;
 
-  /* preview dimensions */
-  const PREV_H = 420;
-  const PREV_W = Math.round(PREV_H * plt.w / plt.h);
+  /* preview dimensions — fit in 420×520 box maintaining aspect ratio */
+  const PREV_MAX_W = 380, PREV_MAX_H = 520;
+  const aspect = plt.h / plt.w;
+  const PREV_W = aspect >= 1
+    ? Math.round(PREV_MAX_H / aspect)    /* portrait: height-constrained */
+    : PREV_MAX_W;                        /* landscape/square: width-constrained */
+  const PREV_H = aspect >= 1
+    ? PREV_MAX_H
+    : Math.round(PREV_MAX_W * aspect);
 
-  /* scale factor for preview */
+  /* scale factor for preview: all authored sizes scale from REEL_BASE_W */
   const previewSc = PREV_W / REEL_BASE_W;
 
   /* ── scene mutators ── */
@@ -1288,11 +1306,11 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
       if (animT.current > (sceneRef.current?.dur || 5)) animT.current = 0;
       const canvas = previewCanvasRef.current; if (!canvas) return;
       const ctx = canvas.getContext("2d");
-      drawReelFrame(ctx, PREV_W, Math.round(PREV_H * plt.h/plt.w), sceneRef.current, animT.current, 1, bgImgCache.current);
+      drawReelFrame(ctx, PREV_W, PREV_H, sceneRef.current, animT.current, 1, bgImgCache.current);
       /* draw selection outlines */
       if (sceneRef.current) {
         const sc = sceneRef.current;
-        const pH = Math.round(PREV_H * plt.h/plt.w);
+        const pH = PREV_H;
         sc.textBoxes.forEach(tb => {
           if (tb.id !== selBoxId && selBoxId !== "__logo__") return;
           if (tb.id !== selBoxId) return;
@@ -1329,7 +1347,7 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
   /* ── drag on preview canvas ── */
   useEffect(() => {
     if (!dragging) return;
-    const pH = Math.round(PREV_H * plt.h/plt.w);
+    const pH = PREV_H;
     const onMove = (e) => {
       const r = dragRef.current; if (!r) return;
       const dx = e.clientX - r.startX, dy = e.clientY - r.startY;
@@ -1366,7 +1384,7 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
     const rect = previewCanvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    const pH = Math.round(PREV_H * plt.h/plt.w);
+    const pH = PREV_H;
 
     /* check logo resize handle first */
     if (sel.logo && bgImgCache.current[sel.logo.src]) {
@@ -1837,13 +1855,13 @@ function ReelEditor({ post, onClose, brandForm, strategy, onSaveReel }) {
 
             {step!==3&&(
               <canvas ref={previewCanvasRef}
-                width={PREV_W} height={Math.round(PREV_H*plt.h/plt.w)}
-                style={{borderRadius:10,boxShadow:"0 8px 40px rgba(0,0,0,.7)",maxWidth:"100%",maxHeight:PREV_H,cursor:dragging?"grabbing":"crosshair"}}
+                width={PREV_W} height={PREV_H}
+                style={{borderRadius:10,boxShadow:"0 8px 40px rgba(0,0,0,.7)",cursor:dragging?"grabbing":"crosshair",flexShrink:0}}
                 onMouseDown={onPreviewMouseDown}/>
             )}
 
             <canvas ref={renderCanvasRef} width={plt.w} height={plt.h}
-              style={{display:step===3?"block":"none",borderRadius:8,boxShadow:"0 8px 40px rgba(0,0,0,.7)",maxWidth:"100%",maxHeight:PREV_H}}/>
+              style={{display:step===3?"block":"none",borderRadius:8,boxShadow:"0 8px 40px rgba(0,0,0,.7)",maxWidth:"100%",maxHeight:PREV_MAX_H}}/>
 
             {step===1&&<div style={{fontSize:11,color:C.muted,fontFamily:"Georgia,serif",textAlign:"center",maxWidth:260,lineHeight:1.7}}>Configurá y generá el guión para ver la animación en vivo.</div>}
             {step===3&&!rendering&&!videoBlob&&<div style={{fontSize:11,color:C.muted,fontFamily:"Georgia,serif",textAlign:"center",lineHeight:1.7}}>El video se renderiza frame a frame.<br/>Usá Chrome o Edge.</div>}
@@ -2338,6 +2356,30 @@ export default function App() {
           ...p, reelState, reelThumb: thumbUrl, reelVideoB64: videoB64,
         } : p),
       } : s),
+    }));
+  };
+
+  /* ── Clear design from post ── */
+  const handleClearDesign = (semanaNum, postId) => {
+    setStrategy(prev => ({
+      ...prev,
+      semanas: prev.semanas.map(s => s.numero !== semanaNum ? s : {
+        ...s, posts: s.posts.map(p => p.id !== postId ? p : {
+          ...p, designState: undefined, designPngs: undefined, designThumb: undefined,
+        }),
+      }),
+    }));
+  };
+
+  /* ── Clear reel from post ── */
+  const handleClearReel = (semanaNum, postId) => {
+    setStrategy(prev => ({
+      ...prev,
+      semanas: prev.semanas.map(s => s.numero !== semanaNum ? s : {
+        ...s, posts: s.posts.map(p => p.id !== postId ? p : {
+          ...p, reelState: undefined, reelVideoB64: undefined, reelThumb: undefined,
+        }),
+      }),
     }));
   };
 
@@ -3012,6 +3054,8 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
                 regeneratingId={regeneratingId}
                 onDesign={(p) => { setDesigningPost(p); setDesigningSemana(semana.numero); }}
                 onReel={(p) => { setReelPost(p); setReelSemana(semana.numero); }}
+                onClearDesign={() => handleClearDesign(semana.numero, post.id)}
+                onClearReel={() => handleClearReel(semana.numero, post.id)}
               />
             ))}
           </div>
