@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 /* ─── THEME ─────────────────────────────────────────────────────── */
 const C = {
@@ -51,11 +51,10 @@ const parseMonthStart = (mesStr) => {
 const getDaysInMonth = (firstDay) =>
   new Date(firstDay.getFullYear(), firstDay.getMonth() + 1, 0).getDate();
 
-// Converts semana (1-4) + diaNombre to an actual date number in the month
 const getPostDate = (semana, diaNombre, firstDay) => {
   const weekStartDay = (semana - 1) * 7 + 1;
   const d = new Date(firstDay.getFullYear(), firstDay.getMonth(), weekStartDay);
-  const weekStartDOW = (d.getDay() + 6) % 7; // 0=Mon
+  const weekStartDOW = (d.getDay() + 6) % 7;
   const targetDOW = DIAS_SEMANA.indexOf(diaNombre);
   if (targetDOW === -1) return weekStartDay;
   let offset = targetDOW - weekStartDOW;
@@ -63,7 +62,6 @@ const getPostDate = (semana, diaNombre, firstDay) => {
   return Math.min(weekStartDay + offset, getDaysInMonth(firstDay));
 };
 
-// Get day name from a date number in the month
 const getDayName = (dateNum, firstDay) => {
   const d = new Date(firstDay.getFullYear(), firstDay.getMonth(), dateNum);
   return DIAS_SEMANA[(d.getDay() + 6) % 7];
@@ -141,7 +139,7 @@ function Stepper({ value, onChange, min = 0, max = 14 }) {
 }
 
 /* ─── POST CARD ──────────────────────────────────────────────────── */
-function PostCard({ post, semanaNum, onEdit, onRegenerate, regeneratingId }) {
+function PostCard({ post, semanaNum, onEdit, onRegenerate, regeneratingId, onDesign }) {
   const netColor = NET_COLOR[post.red] || C.accent;
   const isRegen  = regeneratingId === post.id;
   return (
@@ -156,7 +154,7 @@ function PostCard({ post, semanaNum, onEdit, onRegenerate, regeneratingId }) {
         <Badge label={post.pilar} color={C.muted}  />
         {post.isManual && <Badge label="✍️ Manual" color={C.teal} />}
 
-        {/* Day selector — inline in the card header */}
+        {/* Day selector */}
         <select
           value={post.dia || "Lunes"}
           onChange={e => onEdit(semanaNum, post.id, "dia", e.target.value)}
@@ -169,6 +167,22 @@ function PostCard({ post, semanaNum, onEdit, onRegenerate, regeneratingId }) {
         >
           {DIAS_SEMANA.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
+
+        {/* 🎨 Crear pieza button */}
+        <button
+          onClick={() => onDesign(post)}
+          title="Abrir editor de diseño"
+          style={{
+            background: `${C.accent}22`,
+            border: `1px solid ${C.accent}55`,
+            borderRadius: 6, color: C.accentLt,
+            fontSize: 11, padding: "4px 10px",
+            cursor: "pointer", fontFamily: "Georgia,serif",
+            transition: "all .15s", whiteSpace: "nowrap",
+          }}
+        >
+          🎨 Crear pieza
+        </button>
 
         <button onClick={() => onRegenerate(semanaNum, post)} disabled={isRegen} style={{
           background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6,
@@ -225,6 +239,535 @@ function PostCard({ post, semanaNum, onEdit, onRegenerate, regeneratingId }) {
         )}
       </div>
     </div>
+  );
+}
+
+/* ─── DESIGN EDITOR ──────────────────────────────────────────────── */
+const DESIGN_FORMATS = {
+  instagram: { w: 1080, h: 1080, label: "Instagram",     icon: "▣" },
+  linkedin:  { w: 1200, h: 628,  label: "LinkedIn",      icon: "▬" },
+  post:      { w: 1080, h: 1350, label: "Post 4:5",      icon: "▩" },
+  story:     { w: 1080, h: 1920, label: "Story / Banner",icon: "▮" },
+};
+
+const DESIGN_TEMPLATES = {
+  dark:      { label: "Dark",      bg: "#0C0C0F",  text: "#F2EDE4", accent: "#7B35D4", gradient: false },
+  light:     { label: "Light",     bg: "#F8F6F2",  text: "#111111", accent: "#7B35D4", gradient: false },
+  gradient:  { label: "Gradient",  bg: "#1A0A2E",  text: "#F2EDE4", accent: "#9F5FF0", gradient: true  },
+  editorial: { label: "Editorial", bg: "#F4EFE6",  text: "#2C1810", accent: "#E63946", gradient: false },
+};
+
+// Canvas text wrapping helper
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  const words = text.split(" ");
+  let line = "";
+  const lines = [];
+  for (const word of words) {
+    const test = line ? line + " " + word : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  lines.forEach((l, i) => ctx.fillText(l, x, y + i * lineHeight));
+  return lines.length;
+}
+
+function drawRoundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+function DesignEditor({ post, onClose }) {
+  const [format,   setFormat]   = useState("instagram");
+  const [template, setTemplate] = useState("dark");
+  const [copy,     setCopy]     = useState(post.copy     || "");
+  const [cta,      setCta]      = useState(post.cta      || "");
+  const [hashtags, setHashtags] = useState(post.hashtags || "");
+  const [fontSize, setFontSize] = useState(42);
+  const [align,    setAlign]    = useState("left");
+  const [bgColor,  setBgColor]  = useState(DESIGN_TEMPLATES.dark.bg);
+  const [txtColor, setTxtColor] = useState(DESIGN_TEMPLATES.dark.text);
+  const [accColor, setAccColor] = useState(DESIGN_TEMPLATES.dark.accent);
+  const [downloading, setDownloading] = useState(false);
+
+  const fmt = DESIGN_FORMATS[format];
+  const tpl = DESIGN_TEMPLATES[template];
+
+  // Sync template → colors
+  useEffect(() => {
+    setBgColor(tpl.bg);
+    setTxtColor(tpl.text);
+    setAccColor(tpl.accent);
+  }, [template]);
+
+  // Scale preview to fit panel
+  const PREVIEW_MAX_W = 400;
+  const PREVIEW_MAX_H = 440;
+  const scale = Math.min(PREVIEW_MAX_W / fmt.w, PREVIEW_MAX_H / fmt.h);
+  const pw = Math.round(fmt.w * scale);
+  const ph = Math.round(fmt.h * scale);
+
+  // Scaled sizes for preview
+  const pFontSize    = Math.round(fontSize * scale);
+  const pPad         = Math.round(60 * scale);
+  const pLineHeight  = Math.round(fontSize * 1.55 * scale);
+  const pAccentSize  = Math.round(18 * scale);
+  const pCtaSize     = Math.round(fontSize * 0.42 * scale);
+  const pHashSize    = Math.round(fontSize * 0.36 * scale);
+  const pBadgeH      = Math.round(32 * scale);
+  const pBadgePad    = Math.round(14 * scale);
+
+  // CSS for preview background
+  const previewBg = tpl.gradient
+    ? `linear-gradient(135deg, ${bgColor} 0%, #7B35D4 60%, #2A9D8F 100%)`
+    : bgColor;
+
+  // Compute text starting Y for preview (centered vertically ~38%)
+  const estimatedLines = Math.max(1, Math.ceil((copy.length * pFontSize * 0.6) / (pw - pPad * 2)));
+  const textBlockH = estimatedLines * pLineHeight;
+  const textStartY = Math.max(pPad + pBadgeH + 20, Math.round((ph - textBlockH) * 0.35));
+
+  /* ── Canvas PNG export ── */
+  const buildCanvas = useCallback(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width  = fmt.w;
+    canvas.height = fmt.h;
+    const ctx = canvas.getContext("2d");
+
+    const pad        = 80;
+    const maxW       = fmt.w - pad * 2;
+    const lineH      = fontSize * 1.55;
+    const netColor   = NET_COLOR[post.red] || accColor;
+
+    // Background
+    if (tpl.gradient) {
+      const grad = ctx.createLinearGradient(0, 0, fmt.w, fmt.h);
+      grad.addColorStop(0, bgColor);
+      grad.addColorStop(0.6, "#7B35D4");
+      grad.addColorStop(1,   "#2A9D8F");
+      ctx.fillStyle = grad;
+    } else {
+      ctx.fillStyle = bgColor;
+    }
+    ctx.fillRect(0, 0, fmt.w, fmt.h);
+
+    // Top network badge
+    const badgeH   = 44;
+    const badgeW   = 200;
+    ctx.fillStyle = `${netColor}28`;
+    drawRoundRect(ctx, pad, pad, badgeW, badgeH, badgeH / 2);
+    ctx.fill();
+    ctx.strokeStyle = `${netColor}55`;
+    ctx.lineWidth = 1;
+    drawRoundRect(ctx, pad, pad, badgeW, badgeH, badgeH / 2);
+    ctx.stroke();
+    ctx.fillStyle  = netColor;
+    ctx.font       = `bold ${Math.round(fontSize * 0.38)}px Georgia, serif`;
+    ctx.textAlign  = "left";
+    ctx.textBaseline = "middle";
+    ctx.fillText(post.red, pad + 18, pad + badgeH / 2);
+
+    // Pilar badge (right)
+    const pilarText = post.pilar || "";
+    if (pilarText) {
+      ctx.font = `${Math.round(fontSize * 0.32)}px Georgia, serif`;
+      const pilarW = ctx.measureText(pilarText).width + 28;
+      ctx.fillStyle = `${accColor}22`;
+      drawRoundRect(ctx, fmt.w - pad - pilarW, pad, pilarW, badgeH, badgeH / 2);
+      ctx.fill();
+      ctx.fillStyle = accColor;
+      ctx.fillText(pilarText, fmt.w - pad - pilarW + 14, pad + badgeH / 2);
+    }
+
+    // Main copy text
+    ctx.font          = `${fontSize}px Georgia, serif`;
+    ctx.textAlign     = align === "center" ? "center" : align === "right" ? "right" : "left";
+    ctx.textBaseline  = "top";
+    ctx.fillStyle     = txtColor;
+
+    const textX = align === "center" ? fmt.w / 2 : align === "right" ? fmt.w - pad : pad;
+
+    // Measure lines for vertical centering
+    const words = copy.split(" ");
+    const tempLines = [];
+    let tempLine = "";
+    for (const word of words) {
+      const test = tempLine ? tempLine + " " + word : word;
+      if (ctx.measureText(test).width > maxW && tempLine) {
+        tempLines.push(tempLine); tempLine = word;
+      } else { tempLine = test; }
+    }
+    if (tempLine) tempLines.push(tempLine);
+
+    const totalTextH = tempLines.length * lineH;
+    let textY = Math.max(pad + badgeH + 40, (fmt.h - totalTextH) * 0.38);
+
+    tempLines.forEach((line, i) => {
+      ctx.fillText(line, textX, textY + i * lineH);
+    });
+
+    // Accent line
+    const lineAfterText = textY + totalTextH + 50;
+    ctx.fillStyle = accColor;
+    ctx.fillRect(
+      align === "center" ? fmt.w / 2 - 60 : align === "right" ? fmt.w - pad - 80 : pad,
+      lineAfterText,
+      80, 4
+    );
+
+    // CTA
+    if (cta) {
+      ctx.font      = `${Math.round(fontSize * 0.44)}px Georgia, serif`;
+      ctx.fillStyle = `${txtColor}CC`;
+      ctx.textAlign = align === "center" ? "center" : align === "right" ? "right" : "left";
+      ctx.fillText(cta, textX, lineAfterText + 32);
+    }
+
+    // Hashtags (bottom)
+    if (hashtags) {
+      ctx.font      = `${Math.round(fontSize * 0.36)}px Georgia, serif`;
+      ctx.fillStyle = `${accColor}BB`;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "bottom";
+      const hDisplay = hashtags.length > 80 ? hashtags.slice(0, 80) + "…" : hashtags;
+      ctx.fillText(hDisplay, pad, fmt.h - pad);
+    }
+
+    return canvas;
+  }, [fmt, template, bgColor, txtColor, accColor, copy, cta, hashtags, fontSize, align, post, tpl]);
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      // Small delay to show loading state
+      await new Promise(r => setTimeout(r, 60));
+      const canvas = buildCanvas();
+      const link = document.createElement("a");
+      link.download = `${post.red}-${format}-${Date.now()}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const inp = {
+    width: "100%", background: C.surf3, border: `1px solid ${C.border}`,
+    borderRadius: 7, color: C.text, fontSize: 12, padding: "9px 11px",
+    fontFamily: "Georgia,serif", boxSizing: "border-box", outline: "none", marginBottom: 10,
+    resize: "vertical",
+  };
+  const lbl = {
+    display: "block", fontSize: 9, letterSpacing: "0.13em", textTransform: "uppercase",
+    color: C.accentLt, marginBottom: 5, fontFamily: "Georgia,serif",
+  };
+  const fmtBtnS = (active) => ({
+    flex: 1, padding: "7px 4px", borderRadius: 6, border: "none", cursor: "pointer",
+    background: active ? C.accent : C.surf3,
+    color: active ? C.text : C.muted,
+    fontSize: 10, fontFamily: "Georgia,serif", transition: "all .15s",
+    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+  });
+  const tplBtnS = (active) => ({
+    flex: 1, padding: "7px 4px", borderRadius: 6, border: `1px solid ${active ? C.accent : C.border}`,
+    cursor: "pointer", background: active ? `${C.accent}22` : C.surf2,
+    color: active ? C.accentLt : C.muted,
+    fontSize: 10, fontFamily: "Georgia,serif", transition: "all .15s",
+  });
+  const alignBtnS = (active) => ({
+    width: 32, height: 28, borderRadius: 5, border: `1px solid ${active ? C.accent : C.border}`,
+    background: active ? `${C.accent}22` : "transparent",
+    color: active ? C.accentLt : C.muted,
+    cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center",
+  });
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 60 }} />
+
+      {/* Panel */}
+      <div style={{
+        position: "fixed", right: 0, top: 0, bottom: 0,
+        width: 820, maxWidth: "98vw",
+        background: C.surface, borderLeft: `1px solid ${C.border}`,
+        zIndex: 61, display: "flex", flexDirection: "column",
+        animation: "slideIn .25s ease",
+      }}>
+
+        {/* Header */}
+        <div style={{
+          padding: "18px 24px", borderBottom: `1px solid ${C.border}`,
+          display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0,
+        }}>
+          <div>
+            <div style={{ fontSize: 15, color: C.text, fontFamily: "Georgia,serif" }}>🎨 Editor de pieza</div>
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>{post.red} · {post.tipo} · {post.pilar}</div>
+          </div>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", color: C.muted, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
+        </div>
+
+        {/* Body: sidebar + preview */}
+        <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+
+          {/* ── LEFT SIDEBAR ── */}
+          <div style={{
+            width: 230, flexShrink: 0, overflowY: "auto",
+            borderRight: `1px solid ${C.border}`,
+            padding: "18px 16px",
+          }}>
+
+            {/* Plantilla */}
+            <label style={lbl}>Plantilla</label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, marginBottom: 16 }}>
+              {Object.entries(DESIGN_TEMPLATES).map(([key, t]) => (
+                <button key={key} style={tplBtnS(template === key)} onClick={() => setTemplate(key)}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Formato */}
+            <label style={lbl}>Formato</label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 5, marginBottom: 16 }}>
+              {Object.entries(DESIGN_FORMATS).map(([key, f]) => (
+                <button key={key} style={fmtBtnS(format === key)} onClick={() => setFormat(key)}>
+                  {f.icon} {f.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Texto principal */}
+            <label style={lbl}>Texto principal</label>
+            <textarea
+              value={copy}
+              onChange={e => setCopy(e.target.value)}
+              rows={5}
+              style={{ ...inp }}
+            />
+
+            {/* Font size */}
+            <label style={lbl}>Tamaño</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <input
+                type="range" min={20} max={80} value={fontSize}
+                onChange={e => setFontSize(parseInt(e.target.value))}
+                style={{ flex: 1, accentColor: C.accent }}
+              />
+              <span style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif", minWidth: 24 }}>{fontSize}</span>
+            </div>
+
+            {/* Alignment */}
+            <label style={lbl}>Alineación</label>
+            <div style={{ display: "flex", gap: 5, marginBottom: 14 }}>
+              {[["left","←"],["center","↔"],["right","→"]].map(([val, icon]) => (
+                <button key={val} style={alignBtnS(align === val)} onClick={() => setAlign(val)}>{icon}</button>
+              ))}
+            </div>
+
+            {/* CTA */}
+            <label style={lbl}>CTA</label>
+            <input
+              value={cta}
+              onChange={e => setCta(e.target.value)}
+              style={{ ...inp, resize: "none" }}
+            />
+
+            {/* Hashtags */}
+            <label style={lbl}>Hashtags</label>
+            <input
+              value={hashtags}
+              onChange={e => setHashtags(e.target.value)}
+              style={{ ...inp, resize: "none" }}
+            />
+
+            {/* Colors */}
+            <label style={lbl}>Color de fondo</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <input
+                type="color" value={bgColor} onChange={e => setBgColor(e.target.value)}
+                style={{ width: 36, height: 28, border: "none", borderRadius: 5, cursor: "pointer", background: "none" }}
+              />
+              <span style={{ fontSize: 11, color: C.muted, fontFamily: "monospace" }}>{bgColor}</span>
+            </div>
+
+            <label style={lbl}>Color de acento</label>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+              <input
+                type="color" value={accColor} onChange={e => setAccColor(e.target.value)}
+                style={{ width: 36, height: 28, border: "none", borderRadius: 5, cursor: "pointer", background: "none" }}
+              />
+              <span style={{ fontSize: 11, color: C.muted, fontFamily: "monospace" }}>{accColor}</span>
+            </div>
+          </div>
+
+          {/* ── RIGHT: PREVIEW ── */}
+          <div style={{
+            flex: 1, display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center",
+            background: C.bg, overflow: "hidden", padding: "24px",
+          }}>
+            <div style={{ fontSize: 10, color: C.muted, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 14, fontFamily: "Georgia,serif" }}>
+              Vista previa — {fmt.label} ({fmt.w}×{fmt.h}px)
+            </div>
+
+            {/* Preview box */}
+            <div style={{
+              width: pw, height: ph, position: "relative", overflow: "hidden",
+              background: previewBg, borderRadius: 8,
+              boxShadow: "0 8px 40px rgba(0,0,0,.6)",
+              flexShrink: 0,
+            }}>
+              {/* Network badge */}
+              <div style={{
+                position: "absolute", top: pPad, left: pPad,
+                background: `${NET_COLOR[post.red] || accColor}28`,
+                border: `1px solid ${NET_COLOR[post.red] || accColor}55`,
+                borderRadius: pBadgeH / 2, height: pBadgeH,
+                display: "flex", alignItems: "center",
+                padding: `0 ${pBadgePad}px`,
+                fontSize: pAccentSize * 0.9,
+                color: NET_COLOR[post.red] || accColor,
+                fontFamily: "Georgia,serif", fontWeight: "bold",
+                whiteSpace: "nowrap",
+              }}>
+                {post.red}
+              </div>
+
+              {/* Pilar badge */}
+              {post.pilar && (
+                <div style={{
+                  position: "absolute", top: pPad, right: pPad,
+                  background: `${accColor}22`,
+                  border: `1px solid ${accColor}55`,
+                  borderRadius: pBadgeH / 2, height: pBadgeH,
+                  display: "flex", alignItems: "center",
+                  padding: `0 ${pBadgePad}px`,
+                  fontSize: Math.round(pAccentSize * 0.75),
+                  color: accColor,
+                  fontFamily: "Georgia,serif",
+                  whiteSpace: "nowrap",
+                }}>
+                  {post.pilar}
+                </div>
+              )}
+
+              {/* Copy text */}
+              <div style={{
+                position: "absolute",
+                top: textStartY,
+                left: pPad, right: pPad,
+                fontSize: pFontSize,
+                color: txtColor,
+                fontFamily: "Georgia,serif",
+                lineHeight: `${pLineHeight}px`,
+                textAlign: align,
+                wordBreak: "break-word",
+                transition: "all .15s",
+              }}>
+                {copy}
+              </div>
+
+              {/* Accent line */}
+              <div style={{
+                position: "absolute",
+                top: textStartY + textBlockH + Math.round(50 * scale),
+                left: align === "center" ? "50%" : align === "right" ? undefined : pPad,
+                right: align === "right" ? pPad : undefined,
+                transform: align === "center" ? "translateX(-50%)" : undefined,
+                width: Math.round(80 * scale), height: Math.round(4 * scale),
+                background: accColor, borderRadius: 2,
+              }} />
+
+              {/* CTA */}
+              {cta && (
+                <div style={{
+                  position: "absolute",
+                  top: textStartY + textBlockH + Math.round(50 * scale) + Math.round(28 * scale),
+                  left: pPad, right: pPad,
+                  fontSize: pCtaSize,
+                  color: `${txtColor}CC`,
+                  fontFamily: "Georgia,serif",
+                  textAlign: align,
+                }}>
+                  {cta}
+                </div>
+              )}
+
+              {/* Hashtags */}
+              {hashtags && (
+                <div style={{
+                  position: "absolute",
+                  bottom: pPad, left: pPad, right: pPad,
+                  fontSize: pHashSize,
+                  color: `${accColor}BB`,
+                  fontFamily: "Georgia,serif",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>
+                  {hashtags}
+                </div>
+              )}
+            </div>
+
+            {/* Dimensions label */}
+            <div style={{ fontSize: 10, color: C.muted, marginTop: 12, fontFamily: "Georgia,serif" }}>
+              {pw}×{ph}px (preview) → exporta {fmt.w}×{fmt.h}px
+            </div>
+          </div>
+        </div>
+
+        {/* Footer: download */}
+        <div style={{
+          padding: "16px 24px", borderTop: `1px solid ${C.border}`,
+          display: "flex", gap: 12, alignItems: "center", flexShrink: 0,
+          background: C.surface,
+        }}>
+          <button
+            onClick={handleDownload}
+            disabled={downloading}
+            style={{
+              background: downloading ? C.surf3 : C.accent,
+              border: "none", borderRadius: 9, color: C.text,
+              fontSize: 14, padding: "13px 28px", cursor: downloading ? "not-allowed" : "pointer",
+              fontFamily: "Georgia,serif", transition: "background .2s",
+              display: "flex", alignItems: "center", gap: 8,
+            }}
+          >
+            {downloading ? (
+              <>
+                <span style={{ display: "inline-flex", gap: 4 }}>
+                  {[0,1,2].map(i => (
+                    <span key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: C.accentLt, display: "inline-block", animation: "bounce 1.2s infinite", animationDelay: `${i * .2}s` }} />
+                  ))}
+                </span>
+                Generando…
+              </>
+            ) : "⬇ Descargar PNG"}
+          </button>
+          <div style={{ fontSize: 11, color: C.muted, fontFamily: "Georgia,serif" }}>
+            {fmt.w}×{fmt.h}px · PNG sin fondo adicional
+          </div>
+          <button onClick={onClose} style={{
+            marginLeft: "auto", background: "transparent", border: `1px solid ${C.border}`,
+            borderRadius: 8, color: C.muted, fontSize: 13, padding: "10px 18px",
+            cursor: "pointer", fontFamily: "Georgia,serif",
+          }}>Cerrar</button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -294,7 +837,6 @@ function AddPanel({ onClose, onAddPost, onAddEvento, onEditEvento, onDeleteEvent
           <button onClick={onClose} style={{ background: "transparent", border: "none", color: C.muted, fontSize: 22, cursor: "pointer", lineHeight: 1 }}>✕</button>
         </div>
 
-        {/* Tabs — hidden in edit evento mode */}
         {!isEditingEvento && (
           <div style={{ display: "flex", gap: 6, marginBottom: 22, background: C.surf2, borderRadius: 8, padding: 4 }}>
             {[["post", "📝 Post manual"], ["evento", "📌 Evento / Festivo"]].map(([k, label]) => (
@@ -444,7 +986,7 @@ function AddPanel({ onClose, onAddPost, onAddEvento, onEditEvento, onDeleteEvent
 /* ─── CALENDAR MONTH ─────────────────────────────────────────────── */
 function CalendarMonth({ strategy, eventos, firstDay, dragPost, setDragPost, movePost, onEditEvento, onDeleteEvento }) {
   const daysInMonth = getDaysInMonth(firstDay);
-  const firstDOW    = (firstDay.getDay() + 6) % 7; // 0=Mon
+  const firstDOW    = (firstDay.getDay() + 6) % 7;
 
   const postsByDate   = {};
   const eventosByDate = {};
@@ -474,7 +1016,6 @@ function CalendarMonth({ strategy, eventos, firstDay, dragPost, setDragPost, mov
 
   return (
     <div>
-      {/* Day headers */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4, marginBottom: 6 }}>
         {DIAS_SEMANA.map(d => (
           <div key={d} style={{
@@ -483,7 +1024,6 @@ function CalendarMonth({ strategy, eventos, firstDay, dragPost, setDragPost, mov
           }}>{d.slice(0, 3)}</div>
         ))}
       </div>
-      {/* Grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 4 }}>
         {cells.map((dateNum, i) => {
           if (dateNum === null) return <div key={`empty-${i}`} style={{ minHeight: 90 }} />;
@@ -573,7 +1113,6 @@ function CalendarWeek({ semana, strategy, eventos, firstDay, dragPost, setDragPo
     }
   });
 
-  // For each day of week, compute its actual date within this semana's window
   const weekDays = DIAS_SEMANA.map(dayName => {
     const date = getPostDate(semana, dayName, firstDay);
     return { dayName, date: date >= weekStart && date <= weekEnd ? date : null };
@@ -604,7 +1143,6 @@ function CalendarWeek({ semana, strategy, eventos, firstDay, dragPost, setDragPo
               minHeight: 200, display: "flex", flexDirection: "column",
             }}
           >
-            {/* Header */}
             <div style={{
               padding: "10px 12px", borderBottom: `1px solid ${C.border}`,
               background: C.surf2, borderRadius: "10px 10px 0 0",
@@ -614,7 +1152,6 @@ function CalendarWeek({ semana, strategy, eventos, firstDay, dragPost, setDragPo
               </div>
               {date && <div style={{ fontSize: 20, color: C.text, fontFamily: "Georgia,serif", marginTop: 2 }}>{date}</div>}
             </div>
-            {/* Content */}
             <div style={{ padding: 8, flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
               {evs.map(ev => (
                 <div key={ev.id} style={{
@@ -671,7 +1208,6 @@ function CalendarWeek({ semana, strategy, eventos, firstDay, dragPost, setDragPo
 export default function App() {
   const MONTHS = getMonthOptions();
 
-  /* existing state */
   const [form, setForm] = useState({
     negocio: "", industria: "", sitioWeb: "", audiencia: "", objetivo: "",
     mes: MONTHS[1].value, tono: TONOS[0], redes: [], pilares: [],
@@ -687,20 +1223,20 @@ export default function App() {
   const [error, setError]             = useState("");
   const [regeneratingId, setRegeneratingId] = useState(null);
 
-  /* new state */
-  const [viewMode, setViewMode]         = useState("list"); // "list" | "week" | "month"
+  const [viewMode, setViewMode]         = useState("list");
   const [currentWeek, setCurrentWeek]   = useState(1);
   const [eventos, setEventos]           = useState([]);
   const [showAddPanel, setShowAddPanel] = useState(false);
   const [editingEvento, setEditingEvento] = useState(null);
   const [dragPost, setDragPost]         = useState(null);
 
-  /* persistence state */
-  const [hasSaved, setHasSaved]   = useState(false); // localStorage has data
-  const [savedFlash, setSavedFlash] = useState(false); // "✓ Guardado" toast
-  const [copyFlash, setCopyFlash]   = useState(false); // "✓ Link copiado" toast
+  /* ── NEW: design editor state ── */
+  const [designingPost, setDesigningPost] = useState(null);
 
-  /* helpers */
+  const [hasSaved, setHasSaved]     = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [copyFlash, setCopyFlash]   = useState(false);
+
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const toggleRed = r => {
@@ -723,7 +1259,6 @@ export default function App() {
     ...p, [red]: { ...p[red], [tipo]: Math.max(0, Math.min(14, val)) },
   }));
 
-  /* post mutations */
   const updatePost = (semanaNum, postId, field, value) => setStrategy(prev => ({
     ...prev,
     semanas: prev.semanas.map(s => s.numero === semanaNum
@@ -731,7 +1266,6 @@ export default function App() {
       : s),
   }));
 
-  // Move post between days and/or weeks — used by drag & drop and day selector
   const movePost = (postId, oldSemana, newSemana, newDia) => {
     setStrategy(prev => {
       const post = prev.semanas.find(s => s.numero === oldSemana)?.posts.find(p => p.id === postId);
@@ -771,7 +1305,6 @@ export default function App() {
   /* ─── PERSISTENCE ─────────────────────────────────────────────── */
   const STORAGE_KEY = "chroma_strategy_v1";
 
-  // Encode for URL hash (handles unicode/Spanish)
   const encodePayload = (data) => {
     const str   = JSON.stringify(data);
     const bytes = new TextEncoder().encode(str);
@@ -782,7 +1315,6 @@ export default function App() {
     return JSON.parse(new TextDecoder().decode(bytes));
   };
 
-  // On mount: check URL hash first, then localStorage
   useEffect(() => {
     const hash = window.location.hash.slice(1);
     if (hash) {
@@ -793,16 +1325,15 @@ export default function App() {
           setEventos(data.eventos || []);
           setForm(f => ({ ...f, ...data.form }));
           setScreen("result");
-          history.replaceState(null, "", window.location.pathname); // clean URL
+          history.replaceState(null, "", window.location.pathname);
           return;
         }
-      } catch (e) { /* ignore bad hash */ }
+      } catch (e) {}
     }
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) setHasSaved(true);
   }, []);
 
-  // Auto-save to localStorage whenever strategy or eventos change
   useEffect(() => {
     if (!strategy) return;
     try {
@@ -810,7 +1341,7 @@ export default function App() {
       setSavedFlash(true);
       const t = setTimeout(() => setSavedFlash(false), 2000);
       return () => clearTimeout(t);
-    } catch (e) { /* quota exceeded */ }
+    } catch (e) {}
   }, [strategy, eventos]);
 
   const restoreSaved = () => {
@@ -830,7 +1361,6 @@ export default function App() {
     setHasSaved(false);
   };
 
-  // Share: encode to URL hash + copy to clipboard
   const copyShareURL = () => {
     const encoded = encodePayload({ strategy, eventos, form });
     const url = `${window.location.origin}${window.location.pathname}#${encoded}`;
@@ -840,7 +1370,7 @@ export default function App() {
     });
   };
 
-  /* prompt & generate */
+  /* ─── PROMPT & GENERATE ──────────────────────────────────────── */
   const buildWeekPrompt = (semanaNum, includeResumen) => {
     const redesInfo = form.redes.length > 0
       ? form.redes.map(r => {
@@ -851,7 +1381,6 @@ export default function App() {
     const total = form.redes.reduce((acc, r) => acc + Object.values(contenido[r] || {}).reduce((a, v) => a + v, 0), 0) || 10;
 
     const dias = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
-    // Suggest realistic days for this week to help the model
     const dayHints = dias.slice(0, Math.min(7, total)).join(", ");
 
     return `Sos un estratega experto en redes sociales. Generá posts REALES para la semana ${semanaNum} de 4 del mes de ${form.mes}.
@@ -900,7 +1429,7 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
       try {
         const raw  = await callClaude(messages, maxTokens);
         const text = cleanJSON(raw);
-        JSON.parse(text); // validate — throws if malformed
+        JSON.parse(text);
         return text;
       } catch (e) {
         const isRateLimit = e.message?.match(/try again in ([\d.]+)s/i);
@@ -911,7 +1440,6 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
             await wait(1000);
           }
         } else if (attempt < 3) {
-          // JSON malformed → retry silently
           setLoadingMsg(`${label} — reintentando…`);
           await wait(1500);
         } else {
@@ -1026,32 +1554,30 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
       {headerEl(null)}
       <div style={{ maxWidth: 800, margin: "0 auto", padding: "48px 28px 80px" }}>
 
-        {/* Restore prompt */}
         {hasSaved && screen === "form" && (
           <div style={{
             background: C.surf2, border: `1px solid ${C.accent}55`, borderRadius: 10,
             padding: "16px 20px", marginBottom: 28,
-            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
-            animation: "fadeIn .4s ease",
+            display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
           }}>
             <div>
-              <div style={{ fontSize: 13, color: C.text, marginBottom: 3 }}>💾 Tenés una estrategia guardada</div>
-              <div style={{ fontSize: 12, color: C.muted }}>Podés continuar donde dejaste o empezar una nueva.</div>
+              <div style={{ fontSize: 13, color: C.text, marginBottom: 3 }}>✦ Tenés una estrategia guardada</div>
+              <div style={{ fontSize: 12, color: C.muted }}>¿Querés continuar donde lo dejaste?</div>
             </div>
             <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
               <button onClick={restoreSaved} style={{
-                background: C.accent, border: "none", borderRadius: 7,
-                color: C.text, fontSize: 12, padding: "8px 16px", cursor: "pointer", fontFamily: "Georgia,serif",
-              }}>Continuar</button>
+                background: C.accent, border: "none", borderRadius: 7, color: C.text,
+                fontSize: 12, padding: "9px 16px", cursor: "pointer", fontFamily: "Georgia,serif",
+              }}>Restaurar</button>
               <button onClick={clearSaved} style={{
                 background: "transparent", border: `1px solid ${C.border}`, borderRadius: 7,
-                color: C.muted, fontSize: 12, padding: "8px 14px", cursor: "pointer", fontFamily: "Georgia,serif",
+                color: C.muted, fontSize: 12, padding: "9px 14px", cursor: "pointer", fontFamily: "Georgia,serif",
               }}>Descartar</button>
             </div>
           </div>
         )}
 
-        <div style={{ marginBottom: 46, animation: "fadeIn .5s ease" }}>
+        <div style={{ marginBottom: 44 }}>
           <div style={{ display: "inline-block", background: C.accentDim, border: `1px solid ${C.accent}40`, color: C.accentLt, fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", padding: "5px 14px", borderRadius: 100, marginBottom: 16 }}>Generador IA</div>
           <h1 style={{ fontSize: "clamp(26px,5vw,46px)", fontWeight: 400, letterSpacing: "-0.02em", margin: "0 0 13px", lineHeight: 1.1 }}>Estrategia mensual<br />de redes sociales</h1>
           <p style={{ fontSize: 15, color: C.muted, lineHeight: 1.75, maxWidth: 480, margin: 0 }}>Completá los datos de tu negocio y en segundos tendrás un plan de contenido completo, editable y listo para ejecutar.</p>
@@ -1216,7 +1742,6 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
             cursor: "pointer", fontFamily: "Georgia,serif",
           }}>+ Agregar</button>
 
-          {/* Save indicator */}
           {savedFlash && (
             <span style={{ fontSize: 11, color: C.teal, animation: "fadeIn .2s ease" }}>✓ Guardado</span>
           )}
@@ -1254,7 +1779,7 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
             {viewMode === "list" ? "✏️" : "⟺"}
           </span>
           <span style={{ fontSize: 12, color: C.muted }}>
-            {viewMode === "list"  && <>Editá los campos directamente. Cambiá el día con el selector en cada post o usá <strong style={{ color: C.accentLt }}>↺ Regenerar</strong> para reescribir con IA.</>}
+            {viewMode === "list"  && <>Editá los campos directamente. Usá <strong style={{ color: C.accentLt }}>🎨 Crear pieza</strong> para diseñar y descargar el PNG de cada post. Usá <strong style={{ color: C.accentLt }}>↺ Regenerar</strong> para reescribir con IA.</>}
             {viewMode === "week"  && <>Arrastrá los posts entre columnas para cambiar el día de publicación. Las flechas navegan entre semanas.</>}
             {viewMode === "month" && <>Vista completa del mes. Arrastrá cualquier post a otro día para reprogramarlo.</>}
           </span>
@@ -1269,7 +1794,15 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
               <span style={{ fontSize: 11, color: C.muted, whiteSpace: "nowrap" }}>{semana.posts?.length || 0} publicaciones</span>
             </div>
             {semana.posts?.map(post => (
-              <PostCard key={post.id} post={post} semanaNum={semana.numero} onEdit={updatePost} onRegenerate={handleRegenerate} regeneratingId={regeneratingId} />
+              <PostCard
+                key={post.id}
+                post={post}
+                semanaNum={semana.numero}
+                onEdit={updatePost}
+                onRegenerate={handleRegenerate}
+                regeneratingId={regeneratingId}
+                onDesign={setDesigningPost}
+              />
             ))}
           </div>
         ))}
@@ -1344,6 +1877,14 @@ Devolvé SOLO JSON válido, sin markdown, sin texto extra:
           onDeleteEvento={deleteEvento}
           brandForm={form}
           editingEvento={editingEvento}
+        />
+      )}
+
+      {/* ── DESIGN EDITOR PANEL ── */}
+      {designingPost && (
+        <DesignEditor
+          post={designingPost}
+          onClose={() => setDesigningPost(null)}
         />
       )}
     </div>
